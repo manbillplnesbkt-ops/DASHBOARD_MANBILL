@@ -1,0 +1,7 @@
+{
+  "name": "LPB Monitoring Dashboard",
+  "description": "A professional dashboard for monitoring LPB data with integrated Google Maps and real-time data filtering from Google Sheets.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
