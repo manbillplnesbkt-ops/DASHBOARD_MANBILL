@@ -37,7 +37,7 @@ const DataTable: React.FC<DataTableProps> = ({ data, onRowClick, selectedId, fil
           <div className="p-1.5 bg-indigo-700 rounded-lg text-white shadow-md">
              <Activity size={16} />
           </div>
-          TECHNICAL MONITORING LOG
+          MONITORING PELANGGAN
         </h2>
         
         <div className="flex items-center gap-3">
