@@ -42,7 +42,7 @@ const PetugasSummaryPanel: React.FC<PetugasSummaryPanelProps> = ({ data }) => {
       <div className="flex-1 p-3 flex flex-col overflow-hidden bg-white">
         <div className="w-full h-full border-2 border-slate-200 rounded-xl overflow-hidden flex flex-col bg-white shadow-sm">
           <div className="grid grid-cols-12 bg-slate-50 border-b-2 border-slate-200 text-[8px] font-black text-slate-500 uppercase tracking-[0.15em] py-2.5 px-4 shrink-0">
-            <div className="col-span-5">PETUGAS NAME</div>
+            <div className="col-span-5">PETUGAS</div>
             <div className="col-span-2 text-center">TOTAL</div>
             <div className="col-span-2 text-center text-emerald-600">VALID</div>
             <div className="col-span-3 text-center text-rose-600">INVALID</div>
