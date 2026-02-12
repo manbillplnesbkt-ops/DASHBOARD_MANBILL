@@ -153,7 +153,7 @@ const App: React.FC = () => {
       <footer className="flex justify-between items-center text-slate-500 text-[8px] font-black py-1 px-6 border-t border-slate-200 uppercase tracking-[0.2em] shrink-0 bg-white">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></div>
-          <span>UP3 BUKITTINGGI MONITORING v4.2 ENTERPRISE</span>
+          <span>Dashboard Analisis Kinerja & Informasi Terpadu Manbill </span>
         </div>
         <div className="flex items-center gap-4">
            <span>Performance Optimized System</span>
