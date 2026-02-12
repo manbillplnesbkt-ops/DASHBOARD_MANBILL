@@ -6,7 +6,7 @@ const CACHE_NAME = 'lpb_d1_cache_v5';
 const API_URL_STORAGE_KEY = 'lpb_custom_api_url';
 
 export function getApiUrl(): string {
-  return localStorage.getItem(API_URL_STORAGE_KEY) || 'https://lpb-api-worker.username.workers.dev';
+  return localStorage.getItem(API_URL_STORAGE_KEY) || '';
 }
 
 export function setApiUrl(url: string) {
@@ -22,30 +22,36 @@ export function setApiUrl(url: string) {
 
 export async function testConnection(): Promise<{success: boolean, message: string}> {
   const url = getApiUrl();
-  if (url.includes('username.workers.dev')) {
-    return { success: false, message: 'URL masih menggunakan placeholder. Ganti di Settings.' };
+  if (!url || url === '' || url.includes('username.workers.dev')) {
+    return { success: false, message: 'URL API belum dikonfigurasi. Masukkan URL Worker Anda di SETTING.' };
   }
 
   try {
-    const response = await fetch(`${url}?test=${Date.now()}`, { 
+    const response = await fetch(`${url}?ping=${Date.now()}`, { 
       method: 'GET',
       mode: 'cors',
       headers: { 
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache'
       }
     });
     
     if (response.ok) {
       const data = await response.json();
-      const count = Array.isArray(data) ? data.length : 0;
-      return { success: true, message: `Koneksi Berhasil! Terdeteksi ${count} data di database.` };
+      const count = Array.isArray(data) ? data.length : (data.count || 0);
+      return { success: true, message: `Koneksi Berhasil! Worker merespon dengan ${count} records.` };
     }
-    return { success: false, message: `Error Server (HTTP ${response.status})` };
+    
+    const errBody = await response.json().catch(() => ({}));
+    return { 
+      success: false, 
+      message: `Error Server: ${errBody.error || `HTTP ${response.status}`}. Pastikan Table D1 sudah dibuat.` 
+    };
   } catch (err: any) {
     console.error('[D1 Test Error]:', err);
     return { 
       success: false, 
-      message: 'Failed to fetch: Browser tidak bisa menjangkau Worker. Cek CORS, URL https://, atau status Deploy di Cloudflare.' 
+      message: 'Gagal Terhubung (Failed to fetch). Periksa: 1. URL Worker sudah benar, 2. Worker sudah di-Deploy, 3. CORS sudah diizinkan di Worker.' 
     };
   }
 }
@@ -53,7 +59,8 @@ export async function testConnection(): Promise<{success: boolean, message: stri
 export async function fetchLPBDataFromD1(forceRefresh = false): Promise<{data: LPBData[], fromCache: boolean, timestamp: number}> {
   const currentUrl = getApiUrl();
   
-  if (currentUrl.includes('username.workers.dev')) {
+  // Jika URL kosong atau masih placeholder, gunakan Google Sheets sebagai fallback
+  if (!currentUrl || currentUrl === '' || currentUrl.includes('username.workers.dev')) {
     return fetchFromSheets(forceRefresh);
   }
 
@@ -76,7 +83,10 @@ export async function fetchLPBDataFromD1(forceRefresh = false): Promise<{data: L
       }
     });
     
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(errorData.error || `Server Error: ${response.status}`);
+    }
     
     const rawData = await response.json();
     if (!Array.isArray(rawData)) {
@@ -124,28 +134,35 @@ export async function fetchLPBDataFromD1(forceRefresh = false): Promise<{data: L
     return { data: formattedData, fromCache: false, timestamp: Date.now() };
   } catch (error: any) {
     console.error('[D1 Fetch Error]:', error);
+    
+    // Jika error karena masalah jaringan/CORS, beri tahu user dan fallback ke Sheets
     if (error.message === 'Failed to fetch') {
-      // Jika fetch gagal, coba bersihkan cache agar tidak stuck di error
       if ('caches' in window) await caches.delete(CACHE_NAME);
     }
+    
+    // Selalu fallback ke Google Sheets jika koneksi D1 gagal
     return fetchFromSheets(forceRefresh);
   }
 }
 
 export async function uploadLPBData(data: any[]): Promise<{success: boolean, message: string}> {
   const currentUrl = getApiUrl();
+  if (!currentUrl) return { success: false, message: 'URL API belum diatur.' };
   
   try {
     const response = await fetch(currentUrl, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ action: 'UPLOAD_BULK', payload: data })
     });
 
     if (!response.ok) {
-      const result = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      throw new Error(result.error || `Server error: HTTP ${response.status}`);
+      const result = await response.json().catch(() => ({ error: `Server error: HTTP ${response.status}` }));
+      throw new Error(result.error || `Upload gagal: HTTP ${response.status}`);
     }
 
     const result = await response.json();
@@ -163,9 +180,9 @@ export async function uploadLPBData(data: any[]): Promise<{success: boolean, mes
     if (error.message === 'Failed to fetch') {
       return { 
         success: false, 
-        message: 'Koneksi Ditolak (Failed to fetch). Pastikan Worker Anda memiliki kode CORS terbaru (v3) dan sudah di-Deploy di Cloudflare.' 
+        message: 'Koneksi Ditolak (Failed to fetch). Pastikan Worker Cloudflare sudah di-deploy dengan kode CORS yang benar.' 
       };
     }
-    return { success: false, message: error.message || 'Gagal sinkronisasi data.' };
+    return { success: false, message: error.message || 'Gagal mengirim data ke server.' };
   }
 }

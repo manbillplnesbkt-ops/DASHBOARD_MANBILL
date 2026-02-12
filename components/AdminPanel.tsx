@@ -66,27 +66,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
   const parseCSV = (text: string) => {
     const lines = text.trim().split(/\r?\n/);
     if (lines.length < 2) return [];
+    
     const firstLine = lines[0];
     const delimiter = firstLine.includes(';') ? ';' : ',';
+    
+    // Normalisasi headers
     const rawHeaders = firstLine.split(delimiter).map(h => h.replace(/"/g, '').trim().toUpperCase());
     const data = [];
+
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
       if (!line.trim()) continue;
+      
       const regex = new RegExp(`${delimiter}(?=(?:(?:[^"]*"){2})*[^"]*$)`);
       const values = line.split(regex).map(v => v.trim().replace(/"/g, ''));
       const obj: any = {};
+      
       let hasValidIdpel = false;
       rawHeaders.forEach((header, idx) => {
-        const val = values[idx] || '';
+        let val = values[idx] || '';
         let key = header.toLowerCase().replace(/\s+/g, '_');
-        if (header === "KOORDINAT X") key = "longitude";
-        if (header === "KOORDINAT Y") key = "latitude";
-        if (header === "PEGAWAI") key = "petugas";
+        
+        // PEMETAAN KHUSUS HEADER
+        if (header === "KOORDINAT X" || header === "LONGITUDE" || header === "X") key = "longitude";
+        if (header === "KOORDINAT Y" || header === "LATITUDE" || header === "Y") key = "latitude";
+        if (header === "PEGAWAI" || header === "NAMA PETUGAS") key = "petugas";
+        
+        // PEMBERSIHAN DATA KOORDINAT (Koma -> Titik)
+        if (key === "longitude" || key === "latitude") {
+          val = val.replace(',', '.').replace(/[^-0.9.]/g, ''); 
+        }
+        
         obj[key] = val;
         if (key === 'idpel' && val.length > 5) hasValidIdpel = true;
       });
-      if (hasValidIdpel) data.push(obj);
+
+      if (hasValidIdpel) {
+        data.push(obj);
+      }
     }
     return data;
   };
@@ -99,16 +116,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
       const text = await file.text();
       const allData = parseCSV(text);
       if (allData.length === 0) throw new Error('File CSV tidak valid atau IDPEL tidak ditemukan.');
+      
       const chunkSize = 250;
       const totalChunks = Math.ceil(allData.length / chunkSize);
       setUploadProgress({ current: 0, total: totalChunks });
+
       for (let i = 0; i < allData.length; i += chunkSize) {
         const chunk = allData.slice(i, i + chunkSize);
         const chunkNum = Math.floor(i / chunkSize) + 1;
         setUploadProgress(prev => ({ ...prev, current: chunkNum }));
+        
         const result = await uploadLPBData(chunk);
         if (!result.success) throw new Error(`Gagal pada bagian ke-${chunkNum}: ${result.message}`);
       }
+
       setStatus({ type: 'success', message: `BERHASIL! Total ${allData.length} data diperbarui.` });
       setFile(null);
       setTimeout(() => onRefreshData(), 500);
@@ -125,8 +146,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
   };
 
   const workerCode = `/**
- * CLOUDFLARE WORKER - LPB D1 CONNECTOR (V5)
- * Fokus: Keamanan Batching & Pembersihan Cache
+ * CLOUDFLARE WORKER - LPB D1 CONNECTOR (V5.2)
+ * Fokus: Keamanan Batching, CORS, & Diagnosa Tabel
  */
 export default {
   async fetch(request, env) {
@@ -136,7 +157,12 @@ export default {
       "Access-Control-Allow-Headers": "Content-Type, Accept, Cache-Control, Authorization",
       "Access-Control-Max-Age": "86400",
     };
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+
+    // Handle Preflight Request
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
     const makeRes = (data, status = 200) => {
       return new Response(JSON.stringify(data), { 
         status, 
@@ -147,10 +173,14 @@ export default {
         } 
       });
     };
-    if (!env.DB) return makeRes({ error: "D1 DB Binding missing." }, 500);
+
+    if (!env.DB) return makeRes({ error: "Binding 'DB' tidak ditemukan. Periksa konfigurasi wrangler.toml atau Dashboard Cloudflare." }, 500);
+
     try {
       if (request.method === "POST") {
-        const { action, payload } = await request.json();
+        const body = await request.json();
+        const { action, payload } = body;
+
         if (action === "UPLOAD_BULK" && Array.isArray(payload)) {
           const statements = payload.map(item => {
             return env.DB.prepare(\`
@@ -181,8 +211,18 @@ export default {
           return makeRes({ success: true, count: payload.length });
         }
       }
-      const { results } = await env.DB.prepare("SELECT * FROM lpb_data").all();
-      return makeRes(results);
+
+      // Handle GET (Fetch Data)
+      try {
+        const { results } = await env.DB.prepare("SELECT * FROM lpb_data").all();
+        return makeRes(results);
+      } catch (dbErr) {
+        if (dbErr.message.includes("no such table")) {
+          return makeRes({ error: "Tabel 'lpb_data' belum dibuat di D1. Silakan jalankan SQL Init Table di Admin Dashboard." }, 404);
+        }
+        throw dbErr;
+      }
+
     } catch (e) {
       return makeRes({ error: e.message }, 500);
     }
@@ -265,7 +305,7 @@ export default {
                    <h3 className="text-xs font-black uppercase flex items-center gap-2 text-indigo-700">
                      <Settings size={14} /> API SETTING & SETUP GUIDE
                    </h3>
-                   <span className="text-[9px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded uppercase">D1 Core V5.1</span>
+                   <span className="text-[9px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded uppercase">D1 Core V5.2</span>
                 </div>
                 
                 <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -292,7 +332,7 @@ export default {
                     </button>
                     <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300">
                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-relaxed">
-                        * URL Worker harus diawali dengan https:// dan status sudah ter-deploy. Jika test gagal, periksa binding database 'DB' di Cloudflare.
+                        * Masukkan URL Worker yang valid. Jika muncul "Failed to fetch", pastikan Worker sudah di-deploy dan URL diawali dengan https://.
                       </p>
                     </div>
                   </div>
