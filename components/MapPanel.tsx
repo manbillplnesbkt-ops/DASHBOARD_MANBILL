@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -23,6 +24,9 @@ const activeIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+const DEFAULT_CENTER: [number, number] = [-0.947, 100.417]; // Padang Area
+const DEFAULT_ZOOM = 10;
+
 function ChangeView({ center, zoom }: { center: [number, number], zoom: number }) {
   const map = useMap();
   useEffect(() => {
@@ -37,8 +41,8 @@ interface MapPanelProps {
 }
 
 const MapPanel: React.FC<MapPanelProps> = ({ data, selectedId }) => {
-  const [center, setCenter] = useState<[number, number]>([-2.5489, 118.0149]);
-  const [zoom, setZoom] = useState(5);
+  const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
 
   const allPointsWithCoords = useMemo(() => data.filter(d => 
     d.LATITUDE && d.LONGITUDE && d.LATITUDE !== 0 && d.LONGITUDE !== 0
@@ -55,32 +59,24 @@ const MapPanel: React.FC<MapPanelProps> = ({ data, selectedId }) => {
         setCenter([selected.LATITUDE, selected.LONGITUDE]);
         setZoom(17);
       }
-    } else if (allPointsWithCoords.length > 0) {
-      setCenter([allPointsWithCoords[0].LATITUDE!, allPointsWithCoords[0].LONGITUDE!]);
-      setZoom(12);
     }
-  }, [selectedId, allPointsWithCoords]);
+  }, [selectedId, data]);
 
   return (
     <div className="bg-white border-2 border-slate-300 rounded-2xl overflow-hidden h-full shadow-lg relative group transition-all duration-300">
-      <div className="absolute top-5 left-5 z-[1000] bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-2xl text-white">
-        <p className="text-[10px] font-black text-orange-400 uppercase tracking-[0.3em] mb-1">
-          {selectedId ? 'TARGETING NODE' : 'GEO-SPATIAL OVERVIEW'}
+      <div className="absolute top-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-2xl text-white">
+        <p className="text-[10px] font-black text-orange-400 uppercase tracking-[0.2em] mb-1">
+          {selectedId ? 'TARGETING NODE' : 'GEO-ANALYTICS OVERVIEW'}
         </p>
-        <p className="text-sm font-black border-l-4 border-orange-500 pl-3">
-          {displayPoints.length.toLocaleString()} NODES DEPLOYED
+        <p className="text-sm font-black border-l-2 border-orange-500 pl-3">
+          {displayPoints.length.toLocaleString()} NODES MAPPED
         </p>
       </div>
       
-      <MapContainer 
-        center={center} 
-        zoom={zoom} 
-        scrollWheelZoom={true} 
-        preferCanvas={true}
-      >
+      <MapContainer center={center} zoom={zoom} scrollWheelZoom={true} preferCanvas={true}>
         <TileLayer
-          attribution='&copy; CARTO'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <ChangeView center={center} zoom={zoom} />
         {displayPoints.map((point) => (
@@ -89,10 +85,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ data, selectedId }) => {
             position={[point.LATITUDE!, point.LONGITUDE!]}
             icon={selectedId === point.IDPEL ? activeIcon : customIcon}
           >
-            <Popup minWidth={240}>
+            <Popup minWidth={220}>
               <div className="text-slate-900 font-sans overflow-hidden">
                 <div className="bg-slate-900 p-3">
-                  <p className="font-black text-[12px] uppercase tracking-tight text-white m-0 leading-tight">
+                  <p className="font-black text-xs uppercase tracking-tight text-white m-0 leading-tight">
                     {point.NAMA}
                   </p>
                   <p className="text-[10px] text-slate-400 font-mono mt-1 m-0 tracking-widest">{point.IDPEL}</p>
@@ -101,10 +97,6 @@ const MapPanel: React.FC<MapPanelProps> = ({ data, selectedId }) => {
                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
                     <span className="text-slate-400">UNIT</span>
                     <span className="text-slate-900">{point.UNIT}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                    <span className="text-slate-400">PETUGAS</span>
-                    <span className="text-indigo-700 truncate max-w-[120px]">{point.PETUGAS}</span>
                   </div>
                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
                     <span className="text-slate-400">STATUS</span>
