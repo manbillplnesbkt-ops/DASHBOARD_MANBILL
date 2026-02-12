@@ -17,7 +17,7 @@ interface SidebarNavProps {
 
 const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => {
   const menuItems = [
-    { id: 'DASHBOARD', label: 'DASHBOARD', icon: LayoutDashboard },
+    { id: 'DASHBOARD', label: 'PRA BAYAR', icon: LayoutDashboard },
     { id: 'INVOICE', label: 'INVOICE', icon: FileText },
     { id: 'PEMUTUSAN', label: 'PEMUTUSAN', icon: PowerOff },
     { id: 'P NOL', label: 'P NOL', icon: CircleSlash },
@@ -33,8 +33,8 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => 
             <LayoutDashboard className="text-white" size={18} />
           </div>
           <div className="hidden sm:block">
-            <h2 className="text-[10px] font-black text-white uppercase tracking-[0.2em] leading-none">CORE SYSTEM</h2>
-            <p className="text-[8px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">V4.2 ENTERPRISE</p>
+            <h2 className="text-[10px] font-black text-white uppercase tracking-[0.2em] leading-none">MANBILL MONITORING</h2>
+            <p className="text-[8px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">SYSTEM V4.2</p>
           </div>
         </div>
         
