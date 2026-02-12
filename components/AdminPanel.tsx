@@ -70,7 +70,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     const firstLine = lines[0];
     const delimiter = firstLine.includes(';') ? ';' : ',';
     
-    // Normalisasi headers
     const rawHeaders = firstLine.split(delimiter).map(h => h.replace(/"/g, '').trim().toUpperCase());
     const data = [];
 
@@ -92,9 +91,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
         if (header === "KOORDINAT Y" || header === "LATITUDE" || header === "Y") key = "latitude";
         if (header === "PEGAWAI" || header === "NAMA PETUGAS") key = "petugas";
         
-        // PEMBERSIHAN DATA KOORDINAT (Koma -> Titik)
+        // FIX: PEMBERSIHAN DATA KOORDINAT (Koma -> Titik, Hanya Izinkan Angka 0-9, Titik, dan Minus)
         if (key === "longitude" || key === "latitude") {
-          val = val.replace(',', '.').replace(/[^-0.9.]/g, ''); 
+          // Ubah koma ke titik, lalu hapus semua karakter kecuali angka, titik, dan tanda minus
+          val = val.replace(',', '.').replace(/[^-0-9.]/g, ''); 
         }
         
         obj[key] = val;
@@ -158,7 +158,6 @@ export default {
       "Access-Control-Max-Age": "86400",
     };
 
-    // Handle Preflight Request
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
@@ -174,7 +173,7 @@ export default {
       });
     };
 
-    if (!env.DB) return makeRes({ error: "Binding 'DB' tidak ditemukan. Periksa konfigurasi wrangler.toml atau Dashboard Cloudflare." }, 500);
+    if (!env.DB) return makeRes({ error: "Binding 'DB' tidak ditemukan." }, 500);
 
     try {
       if (request.method === "POST") {
@@ -203,7 +202,9 @@ export default {
               String(item.kwh_kumulatif || ''), String(item.indikator || 'NORMAL'), String(item.sisa_kwh || '0'), String(item.temper || '0'),
               String(item.tutup_meter || ''), String(item.segel || ''), String(item.lcd || ''), String(item.keypad || ''),
               String(item.jml_terminal || ''), String(item.indi_temper || ''), String(item.relay || ''), String(item.petugas || ''),
-              String(item.validasi || 'VALID'), parseFloat(item.longitude || 0), parseFloat(item.latitude || 0),
+              String(item.validasi || 'VALID'), 
+              parseFloat(String(item.longitude || '0')), 
+              parseFloat(String(item.latitude || '0')),
               String(item.catatan || ''), String(item.waktu_jam || '')
             );
           });
@@ -212,13 +213,12 @@ export default {
         }
       }
 
-      // Handle GET (Fetch Data)
       try {
         const { results } = await env.DB.prepare("SELECT * FROM lpb_data").all();
         return makeRes(results);
       } catch (dbErr) {
         if (dbErr.message.includes("no such table")) {
-          return makeRes({ error: "Tabel 'lpb_data' belum dibuat di D1. Silakan jalankan SQL Init Table di Admin Dashboard." }, 404);
+          return makeRes({ error: "Tabel 'lpb_data' belum dibuat." }, 404);
         }
         throw dbErr;
       }
@@ -256,7 +256,7 @@ export default {
                 ${settingAuthError ? 'border-rose-500 bg-rose-50 animate-shake' : 'border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'}
               `}
             />
-            {settingAuthError && <p className="text-[9px] font-black text-rose-600 uppercase text-center mt-2 tracking-tighter">Access Denied. Incorrect Password.</p>}
+            {settingAuthError && <p className="text-[9px] font-black text-rose-600 uppercase text-center mt-2 tracking-tighter">Access Denied.</p>}
           </div>
 
           <button 
@@ -299,17 +299,14 @@ export default {
         {activeTab === 'SETTING' ? (
           !isSettingAuthenticated ? renderSettingAuth() : (
             <div className="animate-in slide-in-from-right-4 duration-300">
-              {/* SETTING SECTION: Combined API Settings & Setup Guide */}
               <div className="bg-white border-2 border-indigo-100 rounded-2xl overflow-hidden shadow-sm">
                 <div className="bg-indigo-50 border-b-2 border-indigo-100 p-4 flex items-center justify-between">
                    <h3 className="text-xs font-black uppercase flex items-center gap-2 text-indigo-700">
                      <Settings size={14} /> API SETTING & SETUP GUIDE
                    </h3>
-                   <span className="text-[9px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded uppercase">D1 Core V5.2</span>
                 </div>
                 
                 <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* API SETTING COLUMN */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 text-slate-400">
                       <Activity size={12} />
@@ -323,42 +320,25 @@ export default {
                         className="flex-1 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-xs font-bold font-mono focus:border-indigo-500 outline-none"
                         placeholder="https://worker-url.workers.dev"
                       />
-                      <button type="submit" className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-md ${saveSuccess ? 'bg-emerald-600 text-white scale-95' : 'bg-slate-900 text-white'}`}>
+                      <button type="submit" className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">
                         {saveSuccess ? 'SAVED' : 'SAVE URL'}
                       </button>
                     </form>
                     <button onClick={handleTestConnection} disabled={testing} className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-colors border border-slate-200">
                       {testing ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} />} TEST CONNECTIVITY
                     </button>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-relaxed">
-                        * Masukkan URL Worker yang valid. Jika muncul "Failed to fetch", pastikan Worker sudah di-deploy dan URL diawali dengan https://.
-                      </p>
-                    </div>
                   </div>
 
-                  {/* SETUP GUIDE COLUMN */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 text-slate-400">
                       <Code size={12} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Worker Deployment Guide</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest">Worker Script</span>
                     </div>
                     <div className="bg-slate-900 p-4 rounded-xl relative group">
-                      <button onClick={() => copyToClipboard(workerCode)} className="absolute top-2 right-2 p-1.5 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                      <button onClick={() => copyToClipboard(workerCode)} className="absolute top-2 right-2 p-1.5 bg-white/5 text-slate-400 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
                         <Copy size={14} />
                       </button>
                       <pre className="text-[9px] text-indigo-200 font-mono h-32 overflow-auto scrollbar-thin">{workerCode}</pre>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button 
-                         onClick={() => copyToClipboard(`CREATE TABLE lpb_data (unit TEXT, idpel TEXT PRIMARY KEY, nama TEXT, alamat TEXT, no_meter TEXT, tarif TEXT, daya TEXT, kode_rbm TEXT, blth TEXT, tegangan TEXT, arus TEXT, cosphi TEXT, tarif_index TEXT, power_limit TEXT, kwh_kumulatif TEXT, indikator TEXT, sisa_kwh TEXT, temper TEXT, tutup_meter TEXT, segel TEXT, lcd TEXT, keypad TEXT, jml_terminal TEXT, indi_temper TEXT, relay TEXT, petugas TEXT, validasi TEXT, longitude REAL, latitude REAL, catatan TEXT, waktu_jam TEXT);`)}
-                         className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-black uppercase transition-colors shadow-sm"
-                      >
-                        SALIN SQL INIT TABLE
-                      </button>
-                      <a href="https://dash.cloudflare.com" target="_blank" className="py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[9px] font-black uppercase flex items-center justify-center gap-2 transition-colors">
-                        DASHBOARD CLOUDFLARE <ExternalLink size={10} />
-                      </a>
                     </div>
                   </div>
                 </div>
@@ -373,21 +353,19 @@ export default {
               </div>
               <div className="z-10">
                 <p className="text-xs font-black uppercase text-slate-900">{file ? file.name : 'UPLOAD CSV MONITORING'}</p>
-                <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Gunakan pemisah koma (,) atau titik koma (;)</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Hanya mendukung format CSV</p>
               </div>
               <input type="file" accept=".csv" onChange={handleFileChange} className="hidden" id="admin-csv-upload" />
               <label htmlFor="admin-csv-upload" className="px-8 py-2.5 bg-slate-900 text-white text-[10px] font-black uppercase rounded-xl cursor-pointer hover:bg-slate-800 shadow-xl transition-all active:scale-95">PILIH FILE CSV</label>
-              
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
             </div>
 
             {loading && uploadProgress.total > 0 && (
-              <div className="bg-indigo-50 border-2 border-indigo-100 rounded-xl p-4 space-y-2 animate-pulse">
+              <div className="bg-indigo-50 border-2 border-indigo-100 rounded-xl p-4 space-y-2">
                 <div className="flex justify-between items-center text-[10px] font-black uppercase text-indigo-700">
-                  <span>Syncing Engine Active...</span>
+                  <span>Uploading Data...</span>
                   <span>Chunk {uploadProgress.current} / {uploadProgress.total}</span>
                 </div>
-                <div className="w-full bg-indigo-200 h-2 rounded-full overflow-hidden shadow-inner">
+                <div className="w-full bg-indigo-200 h-2 rounded-full overflow-hidden">
                   <div 
                     className="bg-indigo-600 h-full transition-all duration-500 ease-out"
                     style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
@@ -400,7 +378,7 @@ export default {
               <div className={`p-4 rounded-xl border-2 flex items-start gap-4 animate-in slide-in-from-bottom-2 ${status.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
                 {status.type === 'success' ? <CheckCircle2 className="shrink-0" /> : <AlertTriangle className="shrink-0" />}
                 <div className="space-y-1">
-                  <p className="text-[10px] font-black leading-tight uppercase">{status.type === 'success' ? 'STATUS: SUCCESS' : 'STATUS: ERROR'}</p>
+                  <p className="text-[10px] font-black leading-tight uppercase">{status.type === 'success' ? 'SUCCESS' : 'ERROR'}</p>
                   <p className="text-[10px] font-bold leading-tight opacity-80">{status.message}</p>
                 </div>
               </div>
@@ -412,18 +390,8 @@ export default {
               className={`w-full py-4 rounded-2xl flex items-center justify-center gap-3 text-sm font-black uppercase shadow-2xl transition-all active:scale-[0.98] ${!file || loading ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-700 text-white hover:bg-indigo-800'}`}
             >
               {loading ? <Loader2 className="animate-spin" /> : <Upload />}
-              {loading ? 'PROCESSING CHUNKS...' : 'SYNC DATA TO CLOUDFLARE'}
+              {loading ? 'PROCESSING...' : 'SYNC DATA'}
             </button>
-            
-            <div className="p-4 bg-orange-50 border-2 border-orange-100 rounded-xl">
-              <div className="flex items-center gap-3 text-orange-700 mb-2">
-                <AlertTriangle size={18} />
-                <span className="text-[10px] font-black uppercase tracking-widest">Important Note</span>
-              </div>
-              <p className="text-[10px] font-bold text-orange-800 leading-relaxed">
-                Syncing data akan menimpa (Update) record yang sudah ada berdasarkan <span className="underline italic">IDPEL</span>. Record baru akan ditambahkan secara otomatis.
-              </p>
-            </div>
           </div>
         )}
       </div>
