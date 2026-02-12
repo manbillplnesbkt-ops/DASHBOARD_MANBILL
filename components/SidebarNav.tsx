@@ -33,8 +33,8 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => 
             <LayoutDashboard className="text-white" size={18} />
           </div>
           <div className="hidden sm:block">
-            <h2 className="text-[10px] font-black text-white uppercase tracking-[0.2em] leading-none">MANBILL MONITORING</h2>
-            <p className="text-[8px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">SYSTEM V4.2</p>
+            <h2 className="text-[10px] font-black text-white uppercase tracking-[0.2em] leading-none">Dashboard Analisis Kinerja & Informasi Terpadu Manbill</h2>
+            <p className="text-[8px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">PLN ES Bukittinggi V4.2</p>
           </div>
         </div>
         
