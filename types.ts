@@ -26,12 +26,12 @@ export interface LPBData {
   "JML TERMINAL": string;
   INDI_TEMPER: string;
   RELAY: string;
-  "KOORDINAT X": string | number; // Longitude
-  "KOORDINAT Y": string | number; // Latitude
   PETUGAS: string;
-  // Legacy support for internal logic
-  LATITUDE?: number;
-  LONGITUDE?: number;
+  CATATAN?: string;
+  WAKTU_JAM?: string;
+  // Geo coordinates used by Leaflet
+  LATITUDE: number;
+  LONGITUDE: number;
 }
 
 export interface FilterState {
@@ -39,4 +39,9 @@ export interface FilterState {
   unit: string;
   PETUGAS: string;
   validasi: string;
+}
+
+export interface AdminAuthState {
+  isAuthenticated: boolean;
+  lastLogin?: number;
 }

@@ -37,7 +37,7 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data }) => {
           <div className="p-1.5 bg-orange-600 rounded-lg text-white shadow-md shadow-orange-900/20">
              <ClipboardList size={16} />
           </div>
-          <h2 className="text-[11px] font-black text-white uppercase tracking-widest leading-none">REKAP ULP</h2>
+          <h2 className="text-[11px] font-black text-white uppercase tracking-widest leading-none">UNIT RECAP</h2>
         </div>
         <div className="flex items-center gap-2">
            <span className="text-[8px] font-black text-slate-500 uppercase">7 Strategic Units</span>
@@ -49,7 +49,7 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data }) => {
         <div className="w-full h-full border-2 border-slate-200 rounded-xl overflow-hidden flex flex-col bg-white shadow-sm">
           {/* Table Header */}
           <div className="grid grid-cols-12 bg-slate-100 border-b-2 border-slate-200 text-[8px] font-black text-slate-500 uppercase tracking-[0.15em] py-2.5 px-4 shrink-0">
-            <div className="col-span-6">ULP</div>
+            <div className="col-span-6">UNIT OFFICE</div>
             <div className="col-span-2 text-center">TOTAL</div>
             <div className="col-span-2 text-center text-emerald-600">VAL</div>
             <div className="col-span-2 text-center text-rose-600">INV</div>

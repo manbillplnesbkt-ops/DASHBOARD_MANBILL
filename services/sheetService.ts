@@ -6,15 +6,135 @@ const SHEET_NAME = 'DATA LPB';
 const DB_NAME = 'LPB_Dashboard_DB';
 const STORE_NAME = 'csv_cache';
 const CACHE_META_KEY = 'lpb_cache_meta';
-const CACHE_TTL = 5 * 60 * 1000; // 5 menit
+const CACHE_TTL = 5 * 60 * 1000;
 
 let inMemoryCache: { data: LPBData[], timestamp: number } | null = null;
+let csvWorker: Worker | null = null;
+
+/**
+ * Worker script content as a string for inlining.
+ * This avoids cross-origin (CORS) issues in sandboxed environments.
+ */
+const WORKER_CODE = `
+  function fastParseCSV(csvText) {
+    const result = [];
+    let row = [];
+    let curr = '';
+    let inQuotes = false;
+    for (let i = 0; i < csvText.length; i++) {
+      const char = csvText[i];
+      const next = csvText[i + 1];
+      if (inQuotes) {
+        if (char === '"' && next === '"') { curr += '"'; i++; }
+        else if (char === '"') { inQuotes = false; }
+        else { curr += char; }
+      } else {
+        if (char === '"') { inQuotes = true; }
+        else if (char === ',') { row.push(curr.trim()); curr = ''; }
+        else if (char === '\\n' || char === '\\r') {
+          row.push(curr.trim());
+          if (row.length > 0) result.push(row);
+          row = []; curr = '';
+          if (char === '\\r' && next === '\\n') i++;
+        } else { curr += char; }
+      }
+    }
+    if (curr || row.length > 0) { row.push(curr.trim()); result.push(row); }
+    return result;
+  }
+
+  function processCsvRows(rows) {
+    if (rows.length < 2) return [];
+    const headers = rows[0];
+    const data = [];
+    const idxMap = {};
+    headers.forEach((h, i) => idxMap[h] = i);
+    const idxX = idxMap["KOORDINAT X"], idxY = idxMap["KOORDINAT Y"];
+    const idxPetugas = idxMap["PETUGAS"], idxPegawai = idxMap["PEGAWAI"];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.length < headers.length) continue;
+      const entry = {};
+      for (let j = 0; j < headers.length; j++) { entry[headers[j]] = row[j]; }
+      entry.PETUGAS = row[idxPetugas] || row[idxPegawai] || '';
+      if (idxX !== undefined && idxY !== undefined) {
+        const lat = parseFloat((row[idxY] || '0').replace(',', '.'));
+        const lng = parseFloat((row[idxX] || '0').replace(',', '.'));
+        entry.LATITUDE = !isNaN(lat) ? lat : 0;
+        entry.LONGITUDE = !isNaN(lng) ? lng : 0;
+      } else {
+        entry.LATITUDE = 0; entry.LONGITUDE = 0;
+      }
+      data.push(entry);
+    }
+    return data;
+  }
+
+  self.onmessage = (e) => {
+    const { csvText } = e.data;
+    try {
+      const parsedRows = fastParseCSV(csvText);
+      const structuredData = processCsvRows(parsedRows);
+      self.postMessage({ success: true, data: structuredData });
+    } catch (error) {
+      self.postMessage({ success: false, error: error.message });
+    }
+  };
+`;
+
+/**
+ * Initialize Web Worker using a Blob URL to bypass CORS/Sandbox restrictions.
+ */
+function getWorker(): Worker {
+  if (!csvWorker) {
+    const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    csvWorker = new Worker(workerUrl);
+  }
+  return csvWorker;
+}
+
+/**
+ * Promise wrapper for Worker communication
+ */
+function parseWithWorker(csvText: string): Promise<LPBData[]> {
+  return new Promise((resolve, reject) => {
+    try {
+      const worker = getWorker();
+      
+      const handler = (e: MessageEvent) => {
+        worker.removeEventListener('message', handler);
+        if (e.data.success) {
+          resolve(e.data.data);
+        } else {
+          reject(new Error(e.data.error));
+        }
+      };
+      
+      const errorHandler = (err: ErrorEvent) => {
+        worker.removeEventListener('error', errorHandler);
+        reject(new Error(`Worker Error: ${err.message}`));
+      };
+
+      worker.addEventListener('message', handler);
+      worker.addEventListener('error', errorHandler);
+      worker.postMessage({ csvText });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
 
 const idb = {
   get: (key: string): Promise<string | null> => {
     return new Promise((resolve) => {
       const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+          request.result.createObjectStore(STORE_NAME);
+        }
+      };
       request.onsuccess = () => {
         const db = request.result;
         try {
@@ -31,7 +151,11 @@ const idb = {
   set: (key: string, value: string): Promise<boolean> => {
     return new Promise((resolve) => {
       const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+          request.result.createObjectStore(STORE_NAME);
+        }
+      };
       request.onsuccess = () => {
         const db = request.result;
         try {
@@ -61,83 +185,34 @@ export async function fetchLPBData(forceRefresh = false): Promise<{data: LPBData
         if (Date.now() - timestamp < CACHE_TTL) {
           const cachedCsv = await idb.get('raw_csv');
           if (cachedCsv) {
-            const parsedData = parseCSV(cachedCsv);
+            const parsedData = await parseWithWorker(cachedCsv);
             inMemoryCache = { data: parsedData, timestamp };
             return { data: parsedData, fromCache: true, timestamp };
           }
         }
       }
-    } catch (e) { console.warn('Cache error:', e); }
+    } catch (e) { console.warn('Cache read error:', e); }
   }
 
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_NAME)}`;
 
   try {
     const response = await fetch(url);
-    if (!response.ok) throw new Error('Network response was not ok');
+    if (!response.ok) throw new Error(`Network error: ${response.statusText}`);
     const csvText = await response.text();
     
-    const parsedData = parseCSV(csvText);
+    const parsedData = await parseWithWorker(csvText);
     const now = Date.now();
 
     inMemoryCache = { data: parsedData, timestamp: now };
     idb.set('raw_csv', csvText).then(() => {
       localStorage.setItem(CACHE_META_KEY, JSON.stringify({ timestamp: now }));
-    });
+    }).catch(err => console.warn('Failed to update IndexedDB cache:', err));
 
     return { data: parsedData, fromCache: false, timestamp: now };
   } catch (error) {
-    console.error('Fetch failed:', error);
+    console.error('Fetch/Parse failed:', error);
     if (inMemoryCache) return { ...inMemoryCache, fromCache: true };
     return { data: [], fromCache: false, timestamp: 0 };
   }
-}
-
-function parseCSV(csvText: string): LPBData[] {
-  const lines = csvText.split(/\r?\n/);
-  if (lines.length < 2) return [];
-
-  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-  const data: LPBData[] = [];
-  
-  const idxX = headers.indexOf("KOORDINAT X");
-  const idxY = headers.indexOf("KOORDINAT Y");
-  const idxPegawai = headers.indexOf("PEGAWAI");
-  const idxPetugas = headers.indexOf("PETUGAS");
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-
-    const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-    if (values.length < headers.length) continue;
-
-    const entry: any = {};
-    for (let j = 0; j < headers.length; j++) {
-      const key = headers[j];
-      let val = values[j]?.replace(/^"|"$/g, '').trim() || '';
-      entry[key] = val;
-    }
-
-    // Mapping PETUGAS (prioritize actual header, then fallback to PEGAWAI)
-    if (idxPetugas !== -1) {
-      entry.PETUGAS = entry[headers[idxPetugas]];
-    } else if (idxPegawai !== -1) {
-      entry.PETUGAS = entry[headers[idxPegawai]];
-    } else {
-      entry.PETUGAS = '';
-    }
-
-    // Mapping koordinat
-    if (idxX !== -1 && idxY !== -1) {
-      const lat = parseFloat(String(entry[headers[idxY]]).replace(',', '.'));
-      const lng = parseFloat(String(entry[headers[idxX]]).replace(',', '.'));
-      entry.LATITUDE = !isNaN(lat) ? lat : 0;
-      entry.LONGITUDE = !isNaN(lng) ? lng : 0;
-    }
-    
-    data.push(entry as LPBData);
-  }
-
-  return data;
 }

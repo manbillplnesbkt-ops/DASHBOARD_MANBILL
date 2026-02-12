@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchLPBData } from './services/sheetService';
-import { LPBData, FilterState } from './types';
+import { fetchLPBDataFromD1 } from './services/d1Service';
+import { LPBData, FilterState, AdminAuthState } from './types';
 import Header from './components/Header';
 import InfoPanel from './components/InfoPanel';
 import MapPanel from './components/MapPanel';
@@ -10,7 +10,10 @@ import SummaryPanel from './components/SummaryPanel';
 import PetugasSummaryPanel from './components/PetugasSummaryPanel';
 import SidebarNav from './components/SidebarNav';
 import PagePlaceholder from './components/PagePlaceholder';
-import { Loader2 } from 'lucide-react';
+import AdminPanel from './components/AdminPanel';
+import { Loader2, LockKeyhole, ShieldCheck } from 'lucide-react';
+
+const ADMIN_PASSWORD = "Adminmanbill";
 
 const App: React.FC = () => {
   const [rawData, setRawData] = useState<LPBData[]>([]);
@@ -19,6 +22,9 @@ const App: React.FC = () => {
   const [lastSync, setLastSync] = useState<number>(0);
   const [selectedItem, setSelectedItem] = useState<LPBData | null>(null);
   const [activePage, setActivePage] = useState<string>('DASHBOARD');
+  const [adminAuth, setAdminAuth] = useState<AdminAuthState>({ isAuthenticated: false });
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState(false);
   
   const [filters, setFilters] = useState<FilterState>({
     blth: '',
@@ -37,8 +43,14 @@ const App: React.FC = () => {
   }, [filters]);
 
   const loadData = async (force = false) => {
-    if (force) setIsRefreshing(true);
-    const result = await fetchLPBData(force);
+    if (force) {
+      setIsRefreshing(true);
+      if ('caches' in window) {
+        await caches.delete('lpb_d1_cache_v3');
+      }
+    }
+    
+    const result = await fetchLPBDataFromD1(force);
     setRawData(result.data);
     setLastSync(result.timestamp);
     setLoading(false);
@@ -47,7 +59,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => loadData(true), 10 * 60 * 1000);
+    const interval = setInterval(() => loadData(true), 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -76,43 +88,84 @@ const App: React.FC = () => {
     setSelectedItem(item);
   }, []);
 
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === ADMIN_PASSWORD) {
+      setAdminAuth({ isAuthenticated: true, lastLogin: Date.now() });
+      setAuthError(false);
+    } else {
+      setAuthError(true);
+      setPasswordInput('');
+    }
+  };
+
   if (loading && rawData.length === 0) {
     return (
       <div className="h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 text-orange-700">
         <Loader2 className="animate-spin" size={64} />
-        <p className="text-xl font-black tracking-widest animate-pulse uppercase">Syncing Cloud Database...</p>
+        <p className="text-xl font-black tracking-widest animate-pulse uppercase">Connecting to Cloudflare D1...</p>
       </div>
     );
   }
 
+  const renderAdminAuth = () => (
+    <div className="h-full flex items-center justify-center bg-slate-100/50 p-4">
+      <div className="bg-white border-2 border-slate-300 rounded-3xl p-8 max-w-sm w-full shadow-2xl space-y-6">
+        <div className="flex flex-col items-center gap-3">
+          <div className="p-4 bg-slate-900 rounded-2xl text-rose-500 shadow-xl shadow-slate-200">
+            <LockKeyhole size={32} />
+          </div>
+          <div className="text-center">
+            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter italic">ADMIN ACCESS</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">RESTRICTED AREA</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleAdminLogin} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Master Password</label>
+            <input 
+              type="password"
+              autoFocus
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="••••••••••••"
+              className={`
+                w-full bg-slate-50 border-2 rounded-xl px-4 py-3 font-black text-center focus:outline-none transition-all
+                ${authError ? 'border-rose-500 bg-rose-50 animate-shake' : 'border-slate-200 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10'}
+              `}
+            />
+            {authError && <p className="text-[9px] font-black text-rose-600 uppercase text-center mt-2 tracking-tighter">Incorrect Password. Authorization Denied.</p>}
+          </div>
+
+          <button 
+            type="submit"
+            className="w-full py-4 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[11px] shadow-lg hover:bg-slate-800 transition-all active:scale-[0.97]"
+          >
+            Authenticate
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+
   const renderDashboard = () => (
     <div className="flex flex-col gap-3 h-full overflow-hidden">
-      {/* TIER 1: PRIMARY MONITORING (TOP 50%) */}
       <div className="flex flex-row gap-3 h-[50%] min-h-[320px]">
-        {/* Unit Recap - Fixed Ratio Left */}
         <div className="flex-[2.2] h-full">
           <SummaryPanel data={rawData} />
         </div>
-        
-        {/* Map Hub - Center */}
         <div className="flex-[5.3] h-full">
           <MapPanel data={filteredData} selectedId={selectedItem?.IDPEL || null} />
         </div>
-
-        {/* Info Panel - Fixed Ratio Right */}
         <div className="flex-[2.5] h-full">
           <InfoPanel data={selectedItem} allData={rawData} />
         </div>
       </div>
-
-      {/* TIER 2: SECONDARY LOGS & PERFORMANCE (BOTTOM 50%) */}
       <div className="flex flex-row gap-3 h-[50%] min-h-[320px]">
-        {/* Petugas Performance - Aligned with Unit Recap above */}
         <div className="flex-[2.2] h-full">
           <PetugasSummaryPanel data={rawData} />
         </div>
-
-        {/* Technical Monitoring Log - Expanded Right Side */}
         <div className="flex-[7.8] h-full min-w-0">
           <DataTable 
             data={filteredData} 
@@ -126,12 +179,25 @@ const App: React.FC = () => {
     </div>
   );
 
+  const renderActivePage = () => {
+    switch (activePage) {
+      case 'DASHBOARD':
+        return renderDashboard();
+      case 'ADMIN':
+        return adminAuth.isAuthenticated ? (
+          <AdminPanel 
+            onBack={() => setActivePage('DASHBOARD')} 
+            onRefreshData={() => loadData(true)} 
+          />
+        ) : renderAdminAuth();
+      default:
+        return <PagePlaceholder title={activePage} />;
+    }
+  };
+
   return (
     <div className="h-screen w-screen bg-slate-100 flex flex-col overflow-hidden">
-      {/* 1. NAVIGATION HEADER */}
       <SidebarNav activePage={activePage} onPageChange={setActivePage} />
-
-      {/* 2. CONTROL STRIP (Filters & Sync Status) */}
       <div className="p-3 lg:px-4 shrink-0 bg-white/50 border-b border-slate-200">
         <Header 
           filters={filters} 
@@ -143,20 +209,21 @@ const App: React.FC = () => {
           lastSync={lastSync}
         />
       </div>
-
-      {/* 3. MAIN WORKSPACE */}
       <main className="flex-1 px-3 lg:px-4 pb-3 min-h-0">
-        {activePage === 'DASHBOARD' ? renderDashboard() : <PagePlaceholder title={activePage} />}
+        {renderActivePage()}
       </main>
-
-      {/* 4. ENTERPRISE FOOTER */}
       <footer className="flex justify-between items-center text-slate-500 text-[8px] font-black py-1 px-6 border-t border-slate-200 uppercase tracking-[0.2em] shrink-0 bg-white">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></div>
-          <span>Dashboard Analisis Kinerja & Informasi Terpadu Manbill </span>
+          <span>UP3 BUKITTINGGI MONITORING v5.1 D1-ENTERPRISE</span>
         </div>
         <div className="flex items-center gap-4">
-           <span>Performance Optimized System</span>
+           {adminAuth.isAuthenticated && (
+             <span className="flex items-center gap-1 text-rose-600 font-black">
+               <ShieldCheck size={10} /> ADMIN LOGGED IN
+             </span>
+           )}
+           <span>Edge-Computing Optimized</span>
            <span className="text-slate-300">|</span>
            <span>© {new Date().getFullYear()} CORE SYSTEMS</span>
         </div>
