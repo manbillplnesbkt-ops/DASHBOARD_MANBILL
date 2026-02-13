@@ -53,8 +53,16 @@ function getValue(item: any, key: string): any {
   if (item[key] !== undefined && item[key] !== null && item[key] !== '') return item[key];
   const upperKey = key.toUpperCase();
   if (item[upperKey] !== undefined && item[upperKey] !== null && item[upperKey] !== '') return item[upperKey];
-  const foundKey = Object.keys(item).find(k => k.toLowerCase() === key.toLowerCase());
+  const underscoreKey = key.replace(/\s+/g, '_');
+  if (item[underscoreKey] !== undefined && item[underscoreKey] !== null && item[underscoreKey] !== '') return item[underscoreKey];
+  const foundKey = Object.keys(item).find(k => k.toLowerCase() === key.toLowerCase() || k.toLowerCase().replace(/\s+/g, '_') === key.toLowerCase());
   return (foundKey && item[foundKey] !== null) ? item[foundKey] : undefined;
+}
+
+function parseNumber(val: any): number {
+  if (val === undefined || val === null || val === '') return 0;
+  const n = parseFloat(String(val).replace(',', '.'));
+  return isNaN(n) ? 0 : n;
 }
 
 function formatSupabaseData(item: any): LPBData {
@@ -70,6 +78,8 @@ function formatSupabaseData(item: any): LPBData {
     BLTH: getValue(item, 'blth') || '',
     VALIDASI: getValue(item, 'validasi') || 'BELUM VALIDASI',
     PETUGAS: getValue(item, 'petugas') || '-',
+    // Memastikan pemetaan dari kolom 'tgl' atau 'tanggal'
+    TANGGAL: getValue(item, 'tgl') || getValue(item, 'tanggal') || '',
     TEGANGAN: getValue(item, 'tegangan') || '0',
     ARUS: getValue(item, 'arus') || '0',
     COSPHI: getValue(item, 'cosphi') || '0',
@@ -93,13 +103,21 @@ function formatSupabaseData(item: any): LPBData {
     INDI_TEMPER: getValue(item, 'indi_temper') || '',
     RELAY: getValue(item, 'relay') || '',
     LATITUDE: parseFloat(getValue(item, 'latitude') || 0),
-    LONGITUDE: parseFloat(getValue(item, 'longitude') || 0)
+    LONGITUDE: parseFloat(getValue(item, 'longitude') || 0),
+    // Invoice metrics
+    TOTALLEMBAR: parseNumber(getValue(item, 'totallembar')),
+    LUNAS_MANDIRI: parseNumber(getValue(item, 'lunas_mandiri')),
+    LUNAS_OFFLINE: parseNumber(getValue(item, 'lunas_offline')),
+    JANJI_BAYAR: parseNumber(getValue(item, 'janji_bayar'))
   };
 }
 
-export async function fetchLPBDataByBounds(bounds: { minLat: number, maxLat: number, minLng: number, maxLng: number }): Promise<LPBData[]> {
+export async function fetchDataByBounds(tableName: string, bounds: { minLat: number, maxLat: number, minLng: number, maxLng: number }): Promise<LPBData[]> {
   const config = getSupabaseConfig();
   if (!config.url || !config.key) return [];
+
+  // Proteksi: Pastikan angka valid untuk mencegah error 400
+  if (isNaN(bounds.minLat) || isNaN(bounds.maxLat)) return [];
 
   try {
     const params = new URLSearchParams();
@@ -109,23 +127,26 @@ export async function fetchLPBDataByBounds(bounds: { minLat: number, maxLat: num
     params.append('longitude', `lte.${bounds.maxLng}`);
     params.append('select', '*');
 
-    const response = await fetch(`${config.url.replace(/\/$/, '')}/rest/v1/lpb_data?${params.toString()}`, {
+    const response = await fetch(`${config.url.replace(/\/$/, '')}/rest/v1/${tableName}?${params.toString()}`, {
       headers: {
         'apikey': config.key.trim(),
         'Authorization': `Bearer ${config.key.trim()}`
       }
     });
 
-    if (!response.ok) throw new Error(`Map Fetch Error ${response.status}`);
+    if (!response.ok) {
+       const errBody = await response.text();
+       throw new Error(`Map Fetch Error ${response.status}: ${errBody}`);
+    }
     const data = await response.json();
     return data.map(formatSupabaseData);
   } catch (error: any) {
-    console.error('Failed to fetch visible points:', error.message);
+    console.error(`Failed to fetch visible points from ${tableName}:`, error.message);
     return [];
   }
 }
 
-export async function fetchLPBDataFromSupabase(forceRefresh = false): Promise<{data: LPBData[], fromCache: boolean, timestamp: number, source: 'SUPABASE' | 'SHEETS'}> {
+export async function fetchTableDataFromSupabase(tableName: string, forceRefresh = false): Promise<{data: LPBData[], fromCache: boolean, timestamp: number, source: 'SUPABASE' | 'SHEETS'}> {
   const config = getSupabaseConfig();
   if (!config.url || !config.key) {
     const sheetResult = await fetchFromSheets(forceRefresh);
@@ -133,10 +154,12 @@ export async function fetchLPBDataFromSupabase(forceRefresh = false): Promise<{d
   }
 
   const cleanUrl = config.url.replace(/\/$/, '');
+  const cacheKey = `${cleanUrl}_${tableName}`;
+
   if (!forceRefresh) {
     try {
       const cache = await caches.open(CACHE_NAME);
-      const cachedResponse = await cache.match(cleanUrl);
+      const cachedResponse = await cache.match(cacheKey);
       if (cachedResponse) {
         const data = await cachedResponse.json();
         return { data, fromCache: true, timestamp: Date.now(), source: 'SUPABASE' };
@@ -151,7 +174,7 @@ export async function fetchLPBDataFromSupabase(forceRefresh = false): Promise<{d
     let hasMore = true;
 
     while (hasMore) {
-      const response = await fetch(`${cleanUrl}/rest/v1/lpb_data?select=*`, {
+      const response = await fetch(`${cleanUrl}/rest/v1/${tableName}?select=*`, {
         headers: {
           'apikey': config.key.trim(),
           'Authorization': `Bearer ${config.key.trim()}`,
@@ -178,13 +201,18 @@ export async function fetchLPBDataFromSupabase(forceRefresh = false): Promise<{d
     const formatted = allData.map(formatSupabaseData);
     if (formatted.length > 0) {
       const cache = await caches.open(CACHE_NAME);
-      await cache.put(cleanUrl, new Response(JSON.stringify(formatted)));
+      await cache.put(cacheKey, new Response(JSON.stringify(formatted)));
     }
     return { data: formatted, fromCache: false, timestamp: Date.now(), source: 'SUPABASE' };
   } catch (error: any) {
+    console.error(`Supabase fetch failed for ${tableName}:`, error);
     const sheetResult = await fetchFromSheets(forceRefresh);
     return { ...sheetResult, source: 'SHEETS' };
   }
+}
+
+export async function fetchLPBDataFromSupabase(forceRefresh = false) {
+  return fetchTableDataFromSupabase('lpb_data', forceRefresh);
 }
 
 export async function testSupabaseConnection(): Promise<{success: boolean, message: string}> {

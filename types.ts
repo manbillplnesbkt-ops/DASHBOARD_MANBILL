@@ -27,8 +27,15 @@ export interface LPBData {
   INDI_TEMPER: string;
   RELAY: string;
   PETUGAS: string;
+  // Added TANGGAL property to support daily performance recap tracking
+  TANGGAL?: string;
   CATATAN?: string;
   WAKTU_JAM?: string;
+  // Invoice specific fields
+  TOTALLEMBAR?: number;
+  LUNAS_MANDIRI?: number;
+  LUNAS_OFFLINE?: number;
+  JANJI_BAYAR?: number;
   // Geo coordinates used by Leaflet
   LATITUDE: number;
   LONGITUDE: number;

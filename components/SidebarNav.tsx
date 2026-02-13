@@ -19,7 +19,7 @@ interface SidebarNavProps {
 const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => {
   const menuItems = [
     { id: 'DASHBOARD', label: 'Prabayar', icon: LayoutDashboard },
-    { id: 'TAGIHAN', label: 'Tagihan', icon: FileText },
+    { id: 'TAGIHAN', label: 'Invoice', icon: FileText },
     { id: 'PEMUTUSAN', label: 'Pemutusan', icon: PowerOff },
     { id: 'P NOL', label: 'P-Nol', icon: CircleSlash },
     { id: 'PIUTANG', label: 'Piutang', icon: Wallet },
@@ -35,7 +35,7 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => 
             <Cpu className="text-white" size={22} />
           </div>
           <div className="hidden md:block">
-            <h2 className="text-xs font-black text-white uppercase tracking-[0.2em] leading-none">KOMANDO LPB</h2>
+            <h2 className="text-xs font-black text-white uppercase tracking-[0.2em] leading-none">DASHBOARD MANBILL PLN ES BUKITTINGGI</h2>
             <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest mt-1">v7.5 Enterprise v.2</p>
           </div>
         </div>
@@ -71,7 +71,7 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => 
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
                 SISTEM AKTIF
               </span>
-              <span className="text-[9px] font-bold text-slate-500 mt-0.5 tracking-tighter">NODE: BKT-UTARA-01</span>
+              <span className="text-[9px] font-bold text-slate-500 mt-0.5 tracking-tighter">NODE: BPLN ES BKT</span>
            </div>
         </div>
       </div>
