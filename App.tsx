@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { fetchLPBDataFromD1 } from './services/d1Service';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { fetchLPBDataFromSupabase, fetchLPBDataByBounds } from './services/supabaseService';
 import { LPBData, FilterState, AdminAuthState } from './types';
 import Header from './components/Header';
 import InfoPanel from './components/InfoPanel';
@@ -11,20 +11,22 @@ import PetugasSummaryPanel from './components/PetugasSummaryPanel';
 import SidebarNav from './components/SidebarNav';
 import PagePlaceholder from './components/PagePlaceholder';
 import AdminPanel from './components/AdminPanel';
-import { Loader2, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { Loader2, LockKeyhole, ShieldCheck, Database, Wifi, Cpu, Zap, Activity } from 'lucide-react';
 
 const ADMIN_PASSWORD = "Adminmanbill";
 
 const App: React.FC = () => {
-  const [rawData, setRawData] = useState<LPBData[]>([]);
+  const [allData, setAllData] = useState<LPBData[]>([]);
+  const [mapData, setMapData] = useState<LPBData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState('Menginisialisasi Sistem Utama...');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSync, setLastSync] = useState<number>(0);
+  const [dataSource, setDataSource] = useState<'SUPABASE' | 'SHEETS'>('SHEETS');
   const [selectedItem, setSelectedItem] = useState<LPBData | null>(null);
   const [activePage, setActivePage] = useState<string>('DASHBOARD');
   const [adminAuth, setAdminAuth] = useState<AdminAuthState>({ isAuthenticated: false });
   const [passwordInput, setPasswordInput] = useState('');
-  const [authError, setAuthError] = useState(false);
   
   const [filters, setFilters] = useState<FilterState>({
     blth: '',
@@ -42,190 +44,184 @@ const App: React.FC = () => {
     return () => clearTimeout(handler);
   }, [filters]);
 
-  const loadData = async (force = false) => {
-    if (force) {
-      setIsRefreshing(true);
-      if ('caches' in window) {
-        await caches.delete('lpb_d1_cache_v3');
-      }
+  const loadGlobalData = async (force = false) => {
+    if (force) setIsRefreshing(true);
+    setLoadingStatus(force ? 'Menyinkronkan Data Global...' : 'Menghubungkan ke Cloud Perusahaan...');
+    try {
+      const result = await fetchLPBDataFromSupabase(force);
+      setAllData(result.data);
+      setLastSync(result.timestamp);
+      setDataSource(result.source);
+    } catch (err) {
+      console.error('Pemuatan data global gagal:', err);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
     }
-    
-    const result = await fetchLPBDataFromD1(force);
-    setRawData(result.data);
-    setLastSync(result.timestamp);
-    setLoading(false);
-    setIsRefreshing(false);
   };
 
+  const handleMapBoundsChange = useCallback(async (bounds: { minLat: number, maxLat: number, minLng: number, maxLng: number }) => {
+    try {
+      const points = await fetchLPBDataByBounds(bounds);
+      setMapData(points);
+    } catch (err) {
+      console.error('Gagal mengambil titik peta:', err);
+    }
+  }, []);
+
   useEffect(() => {
-    loadData();
-    const interval = setInterval(() => loadData(true), 15 * 60 * 1000);
+    loadGlobalData();
+    const interval = setInterval(() => loadGlobalData(true), 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const filteredData = useMemo(() => {
-    if (!debouncedFilters.blth && !debouncedFilters.unit && !debouncedFilters.PETUGAS && !debouncedFilters.validasi) return rawData;
-    
-    return rawData.filter(item => {
-      const matchBlth = !debouncedFilters.blth || item.BLTH === debouncedFilters.blth;
-      const matchUnit = !debouncedFilters.unit || item.UNIT === debouncedFilters.unit;
-      const matchPetugas = !debouncedFilters.PETUGAS || 
-                           item.PETUGAS?.toLowerCase().includes(debouncedFilters.PETUGAS.toLowerCase());
-      const matchValidasi = !debouncedFilters.validasi || item.VALIDASI === debouncedFilters.validasi;
-      return matchBlth && matchUnit && matchPetugas && matchValidasi;
+  const filteredAllData = useMemo(() => {
+    const { blth, unit, PETUGAS, validasi } = debouncedFilters;
+    if (!blth && !unit && !PETUGAS && !validasi) return allData;
+    const searchTerm = PETUGAS.toLowerCase();
+    return allData.filter(item => {
+      if (blth && item.BLTH !== blth) return false;
+      if (unit && item.UNIT !== unit) return false;
+      if (validasi && item.VALIDASI !== validasi) return false;
+      if (searchTerm && !item.PETUGAS?.toLowerCase().includes(searchTerm)) return false;
+      return true;
     });
-  }, [rawData, debouncedFilters]);
+  }, [allData, debouncedFilters]);
+
+  const filteredMapData = useMemo(() => {
+    const { blth, unit, PETUGAS, validasi } = debouncedFilters;
+    if (!blth && !unit && !PETUGAS && !validasi) return mapData;
+    const searchTerm = PETUGAS.toLowerCase();
+    return mapData.filter(item => {
+      if (blth && item.BLTH !== blth) return false;
+      if (unit && item.UNIT !== unit) return false;
+      if (validasi && item.VALIDASI !== validasi) return false;
+      if (searchTerm && !item.PETUGAS?.toLowerCase().includes(searchTerm)) return false;
+      return true;
+    });
+  }, [mapData, debouncedFilters]);
 
   const filterOptions = useMemo(() => {
     return {
-      blth: Array.from(new Set(rawData.map(d => d.BLTH))).filter(Boolean).sort(),
-      unit: Array.from(new Set(rawData.map(d => d.UNIT))).filter(Boolean).sort(),
+      blth: Array.from(new Set(allData.map(d => d.BLTH))).filter(Boolean).sort(),
+      unit: Array.from(new Set(allData.map(d => d.UNIT))).filter(Boolean).sort(),
       pegawai: []
     };
-  }, [rawData]);
+  }, [allData]);
 
-  const handleRowClick = React.useCallback((item: LPBData) => {
+  const activePageLabel = useMemo(() => {
+    switch (activePage) {
+      case 'DASHBOARD': return 'PRABAYAR';
+      case 'TAGIHAN': return 'TAGIHAN';
+      case 'PEMUTUSAN': return 'PEMUTUSAN';
+      case 'P NOL': return 'P-NOL';
+      case 'PIUTANG': return 'PIUTANG';
+      case 'KINERJA': return 'KINERJA';
+      case 'ADMIN': return 'ADMIN';
+      default: return 'SISTEM';
+    }
+  }, [activePage]);
+
+  // Handle counts for placeholders vs active views
+  const activeTabCount = useMemo(() => {
+    if (activePage === 'DASHBOARD') return filteredAllData.length;
+    // For other placeholder tabs, for now we show 0 or could filter specific data types if available.
+    return 0; 
+  }, [activePage, filteredAllData]);
+
+  const handleRowClick = useCallback((item: LPBData) => {
     setSelectedItem(item);
   }, []);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput === ADMIN_PASSWORD) {
-      setAdminAuth({ isAuthenticated: true, lastLogin: Date.now() });
-      setAuthError(false);
-    } else {
-      setAuthError(true);
-      setPasswordInput('');
-    }
-  };
-
-  if (loading && rawData.length === 0) {
+  if (loading && allData.length === 0) {
     return (
-      <div className="h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 text-orange-700">
-        <Loader2 className="animate-spin" size={64} />
-        <p className="text-xl font-black tracking-widest animate-pulse uppercase">Connecting to Cloudflare D1...</p>
+      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-10 text-white">
+        <div className="relative">
+          <div className="w-32 h-32 border-4 border-indigo-500/20 rounded-full animate-ping absolute"></div>
+          <div className="w-32 h-32 border-t-4 border-indigo-500 rounded-full animate-spin"></div>
+          <Cpu className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white" size={48} />
+        </div>
+        <div className="text-center">
+          <h2 className="text-3xl font-black tracking-[0.5em] uppercase text-indigo-400">PUSAT KOMANDO</h2>
+          <p className="text-slate-500 text-sm font-bold uppercase tracking-[0.3em] mt-5 animate-pulse">
+            {loadingStatus}
+          </p>
+        </div>
       </div>
     );
   }
 
-  const renderAdminAuth = () => (
-    <div className="h-full flex items-center justify-center bg-slate-100/50 p-4">
-      <div className="bg-white border-2 border-slate-300 rounded-3xl p-8 max-w-sm w-full shadow-2xl space-y-6">
-        <div className="flex flex-col items-center gap-3">
-          <div className="p-4 bg-slate-900 rounded-2xl text-rose-500 shadow-xl shadow-slate-200">
-            <LockKeyhole size={32} />
-          </div>
-          <div className="text-center">
-            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter italic">ADMIN ACCESS</h2>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">RESTRICTED AREA</p>
-          </div>
-        </div>
-
-        <form onSubmit={handleAdminLogin} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Master Password</label>
-            <input 
-              type="password"
-              autoFocus
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              placeholder="••••••••••••"
-              className={`
-                w-full bg-slate-50 border-2 rounded-xl px-4 py-3 font-black text-center focus:outline-none transition-all
-                ${authError ? 'border-rose-500 bg-rose-50 animate-shake' : 'border-slate-200 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10'}
-              `}
-            />
-            {authError && <p className="text-[9px] font-black text-rose-600 uppercase text-center mt-2 tracking-tighter">Incorrect Password. Authorization Denied.</p>}
-          </div>
-
-          <button 
-            type="submit"
-            className="w-full py-4 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[11px] shadow-lg hover:bg-slate-800 transition-all active:scale-[0.97]"
-          >
-            Authenticate
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-
   const renderDashboard = () => (
-    <div className="flex flex-col gap-3 h-full overflow-hidden">
-      <div className="flex flex-row gap-3 h-[50%] min-h-[320px]">
-        <div className="flex-[2.2] h-full">
-          <SummaryPanel data={rawData} />
+    <div className="flex flex-col gap-6 max-w-[1920px] mx-auto w-full pb-10">
+      <div className="grid grid-cols-12 gap-6 min-h-[500px]">
+        <div className="col-span-12 xl:col-span-3 h-[500px]"><SummaryPanel data={allData} /></div>
+        <div className="col-span-12 xl:col-span-6 h-[500px]">
+          <MapPanel data={filteredMapData} selectedItem={selectedItem} onBoundsChange={handleMapBoundsChange} />
         </div>
-        <div className="flex-[5.3] h-full">
-          <MapPanel data={filteredData} selectedId={selectedItem?.IDPEL || null} />
-        </div>
-        <div className="flex-[2.5] h-full">
-          <InfoPanel data={selectedItem} allData={rawData} />
-        </div>
+        <div className="col-span-12 xl:col-span-3 h-[500px]"><InfoPanel data={selectedItem} allData={allData} /></div>
       </div>
-      <div className="flex flex-row gap-3 h-[50%] min-h-[320px]">
-        <div className="flex-[2.2] h-full">
-          <PetugasSummaryPanel data={rawData} />
-        </div>
-        <div className="flex-[7.8] h-full min-w-0">
-          <DataTable 
-            data={filteredData} 
-            onRowClick={handleRowClick} 
-            selectedId={selectedItem?.IDPEL || null} 
-            filters={filters}
-            setFilters={setFilters}
-          />
+      
+      <div className="grid grid-cols-12 gap-6 min-h-[600px]">
+        <div className="col-span-12 xl:col-span-3 h-[700px]"><PetugasSummaryPanel data={allData} /></div>
+        <div className="col-span-12 xl:col-span-9 h-[700px]">
+          <DataTable data={filteredAllData} onRowClick={handleRowClick} selectedId={selectedItem?.IDPEL || null} filters={filters} setFilters={setFilters} />
         </div>
       </div>
     </div>
   );
-
-  const renderActivePage = () => {
-    switch (activePage) {
-      case 'DASHBOARD':
-        return renderDashboard();
-      case 'ADMIN':
-        return adminAuth.isAuthenticated ? (
-          <AdminPanel 
-            onBack={() => setActivePage('DASHBOARD')} 
-            onRefreshData={() => loadData(true)} 
-          />
-        ) : renderAdminAuth();
-      default:
-        return <PagePlaceholder title={activePage} />;
-    }
-  };
 
   return (
-    <div className="h-screen w-screen bg-slate-100 flex flex-col overflow-hidden">
-      <SidebarNav activePage={activePage} onPageChange={setActivePage} />
-      <div className="p-3 lg:px-4 shrink-0 bg-white/50 border-b border-slate-200">
-        <Header 
-          filters={filters} 
-          setFilters={setFilters} 
-          options={filterOptions} 
-          onRefresh={() => loadData(true)}
-          totalCount={filteredData.length}
-          isRefreshing={isRefreshing}
-          lastSync={lastSync}
-        />
+    <div className="min-h-screen w-full bg-slate-100 flex flex-col">
+      <div className="sticky top-0 z-[1002]">
+        <SidebarNav activePage={activePage} onPageChange={setActivePage} />
       </div>
-      <main className="flex-1 px-3 lg:px-4 pb-3 min-h-0">
-        {renderActivePage()}
-      </main>
-      <footer className="flex justify-between items-center text-slate-500 text-[8px] font-black py-1 px-6 border-t border-slate-200 uppercase tracking-[0.2em] shrink-0 bg-white">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></div>
-          <span>UP3 BUKITTINGGI MONITORING v5.1 D1-ENTERPRISE</span>
+      
+      <div className="bg-white border-b border-slate-200 shadow-sm z-[1001] sticky top-16">
+        <div className="max-w-[1920px] mx-auto px-8 py-4">
+          <Header 
+            filters={filters} 
+            setFilters={setFilters} 
+            options={filterOptions} 
+            onRefresh={() => loadGlobalData(true)} 
+            totalCount={activeTabCount} 
+            isRefreshing={isRefreshing} 
+            lastSync={lastSync}
+            activePageName={activePageLabel}
+          />
         </div>
-        <div className="flex items-center gap-4">
-           {adminAuth.isAuthenticated && (
-             <span className="flex items-center gap-1 text-rose-600 font-black">
-               <ShieldCheck size={10} /> ADMIN LOGGED IN
-             </span>
-           )}
-           <span>Edge-Computing Optimized</span>
-           <span className="text-slate-300">|</span>
-           <span>© {new Date().getFullYear()} CORE SYSTEMS</span>
+      </div>
+
+      <main className="flex-1 p-6 lg:p-8 bg-slate-50/50">
+        {activePage === 'DASHBOARD' ? renderDashboard() : 
+         activePage === 'ADMIN' ? (adminAuth.isAuthenticated ? <AdminPanel onBack={() => setActivePage('DASHBOARD')} onRefreshData={() => loadGlobalData(true)} /> : 
+           <div className="h-[calc(100vh-200px)] flex items-center justify-center">
+             <form onSubmit={(e) => {e.preventDefault(); passwordInput === ADMIN_PASSWORD ? setAdminAuth({isAuthenticated:true}) : alert('Password Salah')}} className="bg-white p-12 rounded-[48px] border border-slate-200 shadow-2xl w-full max-w-md space-y-8 fade-in">
+                <div className="flex flex-col items-center gap-5 text-center">
+                  <div className="p-6 bg-slate-950 text-indigo-400 rounded-[32px] shadow-2xl"><LockKeyhole size={56} /></div>
+                  <h2 className="text-2xl font-black uppercase italic tracking-tight">Otorisasi Sistem</h2>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Masukkan Kode Akses Administratif</p>
+                </div>
+                <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl px-8 py-5 text-center font-black text-xl outline-none focus:border-indigo-500 transition-all placeholder:text-slate-300" placeholder="••••••••" />
+                <button type="submit" className="w-full py-6 bg-slate-950 text-white rounded-3xl font-black uppercase text-sm tracking-[0.2em] hover:bg-indigo-700 transition-all shadow-2xl shadow-slate-900/20 active:scale-95">Verifikasi Identitas</button>
+             </form>
+           </div>
+         ) : <PagePlaceholder title={activePageLabel} />}
+      </main>
+
+      <footer className="bg-white border-t border-slate-200 mt-auto">
+        <div className="max-w-[1920px] mx-auto px-10 py-5 flex justify-between items-center text-slate-400 text-xs font-bold uppercase tracking-[0.15em]">
+          <div className="flex items-center gap-8">
+            <span className="flex items-center gap-3 text-indigo-600">
+              <Activity size={16}/> {activeTabCount.toLocaleString()} NODE TERDATA
+            </span>
+            <span className="flex items-center gap-3">
+              <Wifi size={16} className="text-emerald-500" /> SINKRONISASI CLOUD AKTIF
+            </span>
+          </div>
+          <div className="flex items-center gap-6">
+            <span className="opacity-40 font-black tracking-tighter">SECURE TUNNEL: TLS 1.3</span>
+            <span className="text-slate-900 bg-slate-100 px-4 py-2 rounded-full font-black">BUILD v7.5.SCROLL</span>
+          </div>
         </div>
       </footer>
     </div>

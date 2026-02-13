@@ -21,7 +21,7 @@ const PagePlaceholder: React.FC<PagePlaceholderProps> = ({ title }) => {
         </p>
         <div className="flex items-center justify-center gap-3 bg-slate-100 p-4 rounded-xl border border-slate-200">
           <AlertCircle size={18} className="text-indigo-600" />
-          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">UNDER DEVELOPMENT • CORE v3.0</span>
+          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">DALAM PENGEMBANGAN • CORE v7.5</span>
         </div>
       </div>
     </div>

@@ -9,7 +9,7 @@ interface PetugasSummaryPanelProps {
 
 const PetugasSummaryPanel: React.FC<PetugasSummaryPanelProps> = ({ data }) => {
   const summaryMap = data.reduce((acc: Record<string, { total: number, valid: number, invalid: number }>, item) => {
-    const petugas = item.PETUGAS || 'UNKNOWN';
+    const petugas = item.PETUGAS || 'TIDAK DIKETAHUI';
     if (!acc[petugas]) {
       acc[petugas] = { total: 0, valid: 0, invalid: 0 };
     }
@@ -31,10 +31,10 @@ const PetugasSummaryPanel: React.FC<PetugasSummaryPanelProps> = ({ data }) => {
           <div className="p-1.5 bg-indigo-600 rounded-lg text-white shadow-md shadow-indigo-900/20">
             <Users size={16} />
           </div>
-          <h2 className="text-[11px] font-black text-white uppercase tracking-widest leading-none">PETUGAS PERFORMANCE</h2>
+          <h2 className="text-[11px] font-black text-white uppercase tracking-widest leading-none">KINERJA PETUGAS</h2>
         </div>
         <div className="flex items-center gap-3">
-           <span className="text-[8px] font-black text-slate-500 uppercase">Leaderboard Display</span>
+           <span className="text-[8px] font-black text-slate-500 uppercase">Tampilan Papan Peringkat</span>
            <TrendingUp size={12} className="text-orange-500" />
         </div>
       </div>
@@ -42,16 +42,16 @@ const PetugasSummaryPanel: React.FC<PetugasSummaryPanelProps> = ({ data }) => {
       <div className="flex-1 p-3 flex flex-col overflow-hidden bg-white">
         <div className="w-full h-full border-2 border-slate-200 rounded-xl overflow-hidden flex flex-col bg-white shadow-sm">
           <div className="grid grid-cols-12 bg-slate-50 border-b-2 border-slate-200 text-[8px] font-black text-slate-500 uppercase tracking-[0.15em] py-2.5 px-4 shrink-0">
-            <div className="col-span-5">PETUGAS NAME</div>
+            <div className="col-span-5">NAMA PETUGAS</div>
             <div className="col-span-2 text-center">TOTAL</div>
             <div className="col-span-2 text-center text-emerald-600">VALID</div>
-            <div className="col-span-3 text-center text-rose-600">INVALID</div>
+            <div className="col-span-3 text-center text-rose-600">T.VALID</div>
           </div>
           
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {sortedPetugas.length === 0 ? (
               <div className="p-10 text-center text-slate-400 text-[10px] italic uppercase font-black tracking-widest opacity-50">
-                Awaiting Performance Records
+                Menunggu Catatan Kinerja
               </div>
             ) : (
               sortedPetugas.map((name, idx) => (

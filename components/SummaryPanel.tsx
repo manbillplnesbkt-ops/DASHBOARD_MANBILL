@@ -15,7 +15,7 @@ interface SummaryEntry {
 
 const SummaryPanel: React.FC<SummaryPanelProps> = ({ data }) => {
   const summaryMap = data.reduce((acc: Record<string, SummaryEntry>, item) => {
-    const unit = item.UNIT || 'UNKNOWN';
+    const unit = item.UNIT || 'TIDAK DIKETAHUI';
     if (!acc[unit]) {
       acc[unit] = { total: 0, valid: 0, invalid: 0 };
     }
@@ -37,10 +37,10 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data }) => {
           <div className="p-1.5 bg-orange-600 rounded-lg text-white shadow-md shadow-orange-900/20">
              <ClipboardList size={16} />
           </div>
-          <h2 className="text-[11px] font-black text-white uppercase tracking-widest leading-none">UNIT RECAP</h2>
+          <h2 className="text-[11px] font-black text-white uppercase tracking-widest leading-none">REKAPITULASI UNIT</h2>
         </div>
         <div className="flex items-center gap-2">
-           <span className="text-[8px] font-black text-slate-500 uppercase">7 Strategic Units</span>
+           <span className="text-[8px] font-black text-slate-500 uppercase">{units.length} Unit Strategis</span>
            <BarChart3 size={12} className="text-orange-500" />
         </div>
       </div>
@@ -49,7 +49,7 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data }) => {
         <div className="w-full h-full border-2 border-slate-200 rounded-xl overflow-hidden flex flex-col bg-white shadow-sm">
           {/* Table Header */}
           <div className="grid grid-cols-12 bg-slate-100 border-b-2 border-slate-200 text-[8px] font-black text-slate-500 uppercase tracking-[0.15em] py-2.5 px-4 shrink-0">
-            <div className="col-span-6">UNIT OFFICE</div>
+            <div className="col-span-6">KANTOR UNIT</div>
             <div className="col-span-2 text-center">TOTAL</div>
             <div className="col-span-2 text-center text-emerald-600">VAL</div>
             <div className="col-span-2 text-center text-rose-600">INV</div>
@@ -58,8 +58,8 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data }) => {
           {/* Table Body - Optimized for 7 Rows */}
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {units.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-slate-400 text-[10px] italic font-black uppercase tracking-widest">
-                System Syncing...
+              <div className="flex items-center justify-center h-full text-slate-400 text-[10px] italic font-black uppercase tracking-widest text-center px-4">
+                Menyinkronkan Sistem...
               </div>
             ) : (
               units.map((unit, idx) => (
@@ -87,7 +87,7 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data }) => {
           <div className="grid grid-cols-12 bg-slate-900 text-[10px] font-black text-white uppercase py-3 px-4 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
             <div className="col-span-6 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
-              AGGREGATE TOTAL
+              TOTAL AGREGAT
             </div>
             <div className="col-span-2 text-center text-orange-400 font-mono text-xs">
               {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.total, 0)}

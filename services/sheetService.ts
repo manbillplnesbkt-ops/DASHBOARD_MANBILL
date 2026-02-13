@@ -11,10 +11,6 @@ const CACHE_TTL = 5 * 60 * 1000;
 let inMemoryCache: { data: LPBData[], timestamp: number } | null = null;
 let csvWorker: Worker | null = null;
 
-/**
- * Worker script content as a string for inlining.
- * This avoids cross-origin (CORS) issues in sandboxed environments.
- */
 const WORKER_CODE = `
   function fastParseCSV(csvText) {
     const result = [];
@@ -43,21 +39,52 @@ const WORKER_CODE = `
     return result;
   }
 
+  function fixScientific(str) {
+    if (!str || typeof str !== 'string') return str;
+    const s = str.toUpperCase().trim();
+    if (s.includes('E+')) {
+      try {
+        const num = Number(s.replace(',', '.'));
+        if (!isNaN(num)) {
+          return BigInt(Math.round(num)).toString();
+        }
+      } catch (e) {}
+    }
+    return s;
+  }
+
   function processCsvRows(rows) {
     if (rows.length < 2) return [];
-    const headers = rows[0];
+    
+    // Normalisasi headers ke UPPERCASE untuk konsistensi dengan UI
+    const headers = rows[0].map(h => h.toUpperCase().trim());
     const data = [];
+    
     const idxMap = {};
     headers.forEach((h, i) => idxMap[h] = i);
-    const idxX = idxMap["KOORDINAT X"], idxY = idxMap["KOORDINAT Y"];
-    const idxPetugas = idxMap["PETUGAS"], idxPegawai = idxMap["PEGAWAI"];
+    
+    const idxX = idxMap["KOORDINAT X"] || idxMap["LONGITUDE"];
+    const idxY = idxMap["KOORDINAT Y"] || idxMap["LATITUDE"];
+    const idxPetugas = idxMap["PETUGAS"] || idxMap["PEGAWAI"];
+    const idxIdpel = idxMap["IDPEL"];
+    const idxDaya = headers.findIndex(h => h.includes("DAYA") || h === "VA" || h === "POWER" || h.includes("LIMIT"));
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       if (row.length < headers.length) continue;
+      
       const entry = {};
-      for (let j = 0; j < headers.length; j++) { entry[headers[j]] = row[j]; }
-      entry.PETUGAS = row[idxPetugas] || row[idxPegawai] || '';
+      // Isi semua data berdasarkan header yang sudah di-UPPERCASE
+      headers.forEach((h, j) => {
+        let val = row[j] || '';
+        if (j === idxIdpel) val = fixScientific(val);
+        entry[h] = val;
+      });
+
+      // Mapping manual untuk field yang sering memiliki variasi nama
+      entry.PETUGAS = row[idxPetugas] || '';
+      entry.DAYA = row[idxDaya] || '';
+      
       if (idxX !== undefined && idxY !== undefined) {
         const lat = parseFloat((row[idxY] || '0').replace(',', '.'));
         const lng = parseFloat((row[idxX] || '0').replace(',', '.'));
@@ -66,6 +93,7 @@ const WORKER_CODE = `
       } else {
         entry.LATITUDE = 0; entry.LONGITUDE = 0;
       }
+      
       data.push(entry);
     }
     return data;
@@ -83,9 +111,6 @@ const WORKER_CODE = `
   };
 `;
 
-/**
- * Initialize Web Worker using a Blob URL to bypass CORS/Sandbox restrictions.
- */
 function getWorker(): Worker {
   if (!csvWorker) {
     const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
@@ -95,30 +120,16 @@ function getWorker(): Worker {
   return csvWorker;
 }
 
-/**
- * Promise wrapper for Worker communication
- */
 function parseWithWorker(csvText: string): Promise<LPBData[]> {
   return new Promise((resolve, reject) => {
     try {
       const worker = getWorker();
-      
       const handler = (e: MessageEvent) => {
         worker.removeEventListener('message', handler);
-        if (e.data.success) {
-          resolve(e.data.data);
-        } else {
-          reject(new Error(e.data.error));
-        }
+        if (e.data.success) resolve(e.data.data);
+        else reject(new Error(e.data.error));
       };
-      
-      const errorHandler = (err: ErrorEvent) => {
-        worker.removeEventListener('error', errorHandler);
-        reject(new Error(`Worker Error: ${err.message}`));
-      };
-
       worker.addEventListener('message', handler);
-      worker.addEventListener('error', errorHandler);
       worker.postMessage({ csvText });
     } catch (err) {
       reject(err);
