@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, FileUp, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Settings, Database, Activity, AlertTriangle, LockKeyhole, Wifi, RefreshCcw, Zap, ExternalLink, Trash2, Table, Check } from 'lucide-react';
-import { uploadToSupabase, getSupabaseConfig, setSupabaseConfig, testSupabaseConnection, clearSupabaseCache } from '../services/supabaseService';
+import { Upload, FileUp, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Settings, Database, Activity, AlertTriangle, LockKeyhole, Wifi, RefreshCcw, Zap, ExternalLink, Trash2, Table, Check, ChevronDown, FileSpreadsheet } from 'lucide-react';
+import { uploadToSupabase, getSupabaseConfig, setSupabaseConfig, testSupabaseConnection } from '../services/supabaseService';
 
 interface AdminPanelProps {
   onBack: () => void;
@@ -16,25 +16,27 @@ const ALLOWED_COLUMNS = [
   'validasi', 'tegangan', 'arus', 'cosphi', 'indikator', 'sisa_kwh', 'temper', 
   'tutup_meter', 'segel', 'lcd', 'keypad', 'relay', 'tarif_index', 'power_limit', 
   'kwh_kumulatif', 'jml_terminal', 'indi_temper', 'catatan', 'waktu_jam', 
-  'no_meter', 'tarif', 'daya', 'kode_rbm'
+  'no_meter', 'tarif', 'daya', 'kode_rbm',
+  // Invoice Specific Columns
+  'tgl', 'totallembar', 'lunas_mandiri', 'lunas_offline', 'janji_bayar'
 ];
 
-// Daftar kolom yang harus dikirim sebagai tipe Numeric/Number ke Supabase
 const NUMERIC_COLUMNS = [
   'latitude', 'longitude', 'tegangan', 'arus', 'cosphi', 
   'sisa_kwh', 'kwh_kumulatif', 'daya', 'power_limit', 'temper',
-  'jml_terminal', 'tarif_index'
+  'jml_terminal', 'tarif_index',
+  'totallembar', 'lunas_mandiri', 'lunas_offline', 'janji_bayar'
 ];
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('INPUT');
+  const [targetTable, setTargetTable] = useState<'lpb_data' | 'invoice_data'>('lpb_data');
   const [isSettingAuth, setIsSettingAuth] = useState(false);
   const [passInput, setPassInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [mappedColumns, setMappedColumns] = useState<string[]>([]);
-  const [testStatus, setTestStatus] = useState<{loading: boolean, result: string | null}>({loading: false, result: null});
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
   
@@ -47,53 +49,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     setSupabaseKey(config.key);
   }, []);
 
-  const handleTestConnection = async () => {
-    setTestStatus({loading: true, result: null});
-    const res = await testSupabaseConnection();
-    setTestStatus({loading: false, result: res.message});
-  };
-
   const fixScientific = (str: string) => {
     if (!str) return '';
     let s = String(str).toUpperCase().trim();
     if (!s.includes('E+')) return s;
     try {
       const num = Number(s.replace(',', '.'));
-      if (!isNaN(num)) {
-        return BigInt(Math.round(num)).toString();
-      }
-    } catch (e) {
-      return s;
-    }
+      if (!isNaN(num)) return BigInt(Math.round(num)).toString();
+    } catch (e) {}
     return s;
   };
 
-  /**
-   * Mengonversi string ke Number atau null.
-   * Sangat penting mengirimkan null alih-alih "" untuk kolom bertipe numeric di PostgreSQL.
-   */
   const cleanNumeric = (val: any): number | null => {
     if (val === undefined || val === null || val === '') return null;
     let str = String(val).trim();
     if (str === '') return null;
-    
-    // Hapus karakter non-numerik kecuali pemisah (titik/koma) dan minus
     str = str.replace(/[^0-9,.-]/g, '');
-
     const lastComma = str.lastIndexOf(',');
     const lastDot = str.lastIndexOf('.');
-    
-    if (lastComma > lastDot) {
-      // Format Indonesia: ribuan titik, desimal koma (1.234,56)
-      str = str.replace(/\./g, '').replace(',', '.');
-    } else if (lastDot > lastComma) {
-      // Format Internasional: ribuan koma, desimal titik (1,234.56)
-      str = str.replace(/,/g, '');
-    } else {
-      // Hanya satu jenis pemisah atau tidak ada sama sekali
-      str = str.replace(',', '.');
-    }
-
+    if (lastComma > lastDot) str = str.replace(/\./g, '').replace(',', '.');
+    else if (lastDot > lastComma) str = str.replace(/,/g, '');
+    else str = str.replace(',', '.');
     const parsed = parseFloat(str);
     return isNaN(parsed) ? null : parsed;
   };
@@ -107,7 +83,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     const headers = firstLine.split(delimiter).map(h => h.replace(/"/g, '').trim().toUpperCase());
     
     const result = [];
-    const limit = isPreview ? Math.min(6, lines.length) : lines.length;
+    const limit = isPreview ? Math.min(8, lines.length) : lines.length;
     const detectedMappedKeys: string[] = [];
 
     for (let i = 1; i < limit; i++) {
@@ -117,52 +93,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
       headers.forEach((h, idx) => {
         let key = h.toLowerCase().replace(/\s+/g, '_');
         
-        // Cerdas mapping berdasarkan substring
+        // Specialized Mapping
         if (h === "IDPEL" || h.includes("ID PEL")) key = "idpel";
         else if (h.includes("NAMA")) key = "nama";
         else if (h.includes("UNIT")) key = "unit";
         else if (h.includes("PETUGAS") || h.includes("PEGAWAI")) key = "petugas";
-        else if (h.includes("ALAMAT")) key = "alamat";
         else if (h.includes("BLTH")) key = "blth";
-        else if (h.includes("KOORDINAT X") || h === "LONGITUDE" || h === "LONG") key = "longitude";
-        else if (h.includes("KOORDINAT Y") || h === "LATITUDE" || h === "LAT") key = "latitude";
-        else if (h === "VOLT" || h === "TEGANGAN") key = "tegangan";
-        else if (h === "AMP" || h === "ARUS") key = "arus";
-        else if (h.includes("COSPHI")) key = "cosphi";
-        else if (h === "SISA KWH" || h === "SISA") key = "sisa_kwh";
-        else if (h.includes("KWH KUM") || h.includes("KUMULATIF")) key = "kwh_kumulatif";
-        else if (h.includes("TEMPER")) key = "temper";
-        else if (h.includes("NO METER")) key = "no_meter";
-        else if (h === "TARIF") key = "tarif";
-        else if (h === "DAYA" || h === "VA") key = "daya";
-        else if (h.includes("POWER LIMIT") || h === "LIMIT") key = "power_limit";
-        else if (h.includes("TARIF INDEX") || h === "INDEX") key = "tarif_index";
-        else if (h.includes("RBM")) key = "kode_rbm";
-        else if (h.includes("TERMINAL")) key = "jml_terminal";
+        else if (h === "TGL" || h === "TANGGAL" || h === "TGL_BAYAR") key = "tgl";
+        else if (h === "TOTAL LEMBAR" || h === "TOTALLEMBAR" || h === "TOTAL_WO") key = "totallembar";
+        else if (h.includes("LUNAS MANDIRI") || h === "LM" || h === "MANDIRI") key = "lunas_mandiri";
+        else if (h.includes("LUNAS OFFLINE") || h === "OFFLINE") key = "lunas_offline";
+        else if (h.includes("JANJI BAYAR") || h === "JANJI") key = "janji_bayar";
 
         if (ALLOWED_COLUMNS.includes(key)) {
           if (i === 1 && !detectedMappedKeys.includes(key)) detectedMappedKeys.push(key);
           let val = vals[idx] || '';
-          
-          if (key === 'idpel') {
-            val = fixScientific(val);
-          }
-          
-          if (NUMERIC_COLUMNS.includes(key)) {
-            obj[key] = cleanNumeric(val);
-          } else {
-            obj[key] = val;
-          }
+          if (key === 'idpel') val = fixScientific(val);
+          if (NUMERIC_COLUMNS.includes(key)) obj[key] = cleanNumeric(val);
+          else obj[key] = val;
         }
       });
-
-      // Sinkronisasi Daya vs Power Limit secara cerdas tanpa memaksa ke string
-      if ((obj.daya === null || obj.daya === undefined) && obj.power_limit !== null) {
-        obj.daya = obj.power_limit;
-      }
-      if ((obj.power_limit === null || obj.power_limit === undefined) && obj.daya !== null) {
-        obj.power_limit = obj.daya;
-      }
 
       if (obj.idpel) result.push(obj);
     }
@@ -184,7 +134,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
       setPreviewData([]);
       setMappedColumns([]);
     }
-  }, [file]);
+  }, [file, targetTable]);
 
   const handleUpload = async () => {
     if (!file) return;
@@ -195,15 +145,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
       const text = await file.text();
       const rawData = await parseCSV(text, false);
       
-      if (rawData.length === 0) throw new Error('Kolom IDPEL tidak ditemukan atau file kosong.');
+      if (rawData.length === 0) throw new Error('Data tidak valid atau kolom IDPEL tidak ditemukan.');
 
-      // De-duplikasi IDPEL
-      const uniqueDataMap = new Map();
-      rawData.forEach(item => {
-        uniqueDataMap.set(item.idpel, item);
-      });
-      const allData = Array.from(uniqueDataMap.values());
-      const duplicateCount = rawData.length - allData.length;
+      let allData = rawData;
+      if (targetTable === 'lpb_data') {
+        const uniqueDataMap = new Map();
+        rawData.forEach(item => uniqueDataMap.set(item.idpel, item));
+        allData = Array.from(uniqueDataMap.values());
+      }
       
       const chunkSize = 500;
       const total = Math.ceil(allData.length / chunkSize);
@@ -211,14 +160,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
 
       for (let i = 0; i < allData.length; i += chunkSize) {
         const chunk = allData.slice(i, i + chunkSize);
-        const res = await uploadToSupabase(chunk);
+        const res = await uploadToSupabase(chunk, targetTable);
         if (!res.success) throw new Error(res.message);
         setUploadProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }
 
       setStatus({ 
         type: 'success', 
-        message: `Sinkron Berhasil: ${allData.length} data.${duplicateCount > 0 ? ` (${duplicateCount} duplikat dibuang)` : ''}` 
+        message: `Sinkronisasi Berhasil: ${allData.length} data dikirim ke tabel ${targetTable.toUpperCase()}.` 
       });
       setFile(null);
       onRefreshData();
@@ -232,78 +181,148 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
   const isCompatible = useMemo(() => mappedColumns.includes('idpel'), [mappedColumns]);
 
   return (
-    <div className="bg-white border-2 border-slate-300 rounded-2xl flex flex-col h-full shadow-2xl overflow-hidden">
-      <div className="bg-slate-900 p-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all"><ArrowLeft size={20} /></button>
-          <h2 className="text-sm font-black text-white uppercase tracking-widest leading-none italic flex items-center gap-2">
-            <Zap className="text-emerald-500" size={18} /> MESIN CLOUD SUPABASE
-          </h2>
+    <div className="bg-white border-2 border-slate-300 rounded-[40px] flex flex-col h-full shadow-2xl overflow-hidden fade-in">
+      {/* Header Panel Admin */}
+      <div className="bg-slate-950 p-8 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 hover:text-white transition-all">
+            <ArrowLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-base font-black text-white uppercase tracking-[0.2em] italic leading-none flex items-center gap-3">
+              <Zap size={20} className="text-emerald-500 fill-emerald-500" /> PUSAT KONTROL DATA
+            </h2>
+            <p className="text-[10px] font-bold text-slate-500 uppercase mt-2 tracking-widest italic">Secure Supabase Tunnel Active</p>
+          </div>
         </div>
-        <div className="flex bg-slate-800 p-1 rounded-xl">
-          <button onClick={() => setActiveTab('INPUT')} className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === 'INPUT' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400'}`}>SINKRONISASI</button>
-          <button onClick={() => setActiveTab('SETTING')} className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === 'SETTING' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400'}`}>PENGATURAN</button>
+        <div className="flex bg-white/5 p-1.5 rounded-2xl border border-white/5">
+          <button onClick={() => setActiveTab('INPUT')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'INPUT' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400 hover:text-slate-200'}`}>SINKRONISASI</button>
+          <button onClick={() => setActiveTab('SETTING')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'SETTING' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400 hover:text-slate-200'}`}>PENGATURAN</button>
         </div>
       </div>
 
-      <div className="flex-1 p-6 overflow-auto bg-slate-50">
+      <div className="flex-1 p-8 overflow-auto bg-slate-50/50">
         {activeTab === 'SETTING' ? (
           !isSettingAuth ? (
             <div className="flex justify-center py-20">
-              <form onSubmit={(e) => { e.preventDefault(); passInput === SETTING_TAB_PASSWORD ? setIsSettingAuth(true) : alert('Salah'); }} className="bg-white p-8 rounded-3xl border-2 border-slate-200 shadow-xl w-full max-sm space-y-4">
-                <input type="password" value={passInput} onChange={(e)=>setPassInput(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-center font-black focus:border-emerald-500 outline-none" placeholder="PASSWORD" />
-                <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[10px]">VERIFIKASI</button>
+              <form onSubmit={(e) => { e.preventDefault(); passInput === SETTING_TAB_PASSWORD ? setIsSettingAuth(true) : alert('Password Otorisasi Salah'); }} className="bg-white p-10 rounded-[40px] border-2 border-slate-200 shadow-2xl w-full max-w-md space-y-6">
+                <div className="text-center space-y-2">
+                   <div className="p-4 bg-slate-900 text-indigo-400 rounded-3xl w-fit mx-auto mb-4"><LockKeyhole size={32}/></div>
+                   <h3 className="text-xl font-black uppercase tracking-tight">Otorisasi Akses</h3>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Konfigurasi Infrastruktur Cloud</p>
+                </div>
+                <input type="password" value={passInput} onChange={(e)=>setPassInput(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl px-6 py-4 text-center font-black text-lg focus:border-indigo-600 outline-none transition-all" placeholder="••••••••" />
+                <button type="submit" className="w-full py-5 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all">Verifikasi Identitas</button>
               </form>
             </div>
           ) : (
-            <div className="max-w-2xl mx-auto space-y-4">
-               <div className="bg-white p-6 border-2 border-slate-200 rounded-2xl space-y-4">
-                  <h3 className="text-xs font-black uppercase flex items-center gap-2 text-indigo-700"><Settings size={14}/> Konfigurasi Database</h3>
-                  <input type="text" value={supabaseUrl} onChange={(e)=>setSupabaseUrl(e.target.value)} placeholder="URL Supabase" className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-xs font-mono" />
-                  <input type="password" value={supabaseKey} onChange={(e)=>setSupabaseKey(e.target.value)} placeholder="API Key Supabase" className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-xs font-mono" />
-                  <button onClick={() => { setSupabaseConfig({ url: supabaseUrl, key: supabaseKey }); alert('Berhasil Disimpan'); }} className="w-full py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase">Simpan Konfigurasi</button>
+            <div className="max-w-3xl mx-auto space-y-6">
+               <div className="bg-white p-8 border border-slate-200 rounded-[32px] shadow-sm space-y-6">
+                  <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                    <Settings size={20} className="text-indigo-600"/>
+                    <h3 className="text-sm font-black uppercase text-slate-900">Konfigurasi Endpoint API</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Supabase URL</label>
+                       <input type="text" value={supabaseUrl} onChange={(e)=>setSupabaseUrl(e.target.value)} placeholder="https://xxxx.supabase.co" className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold" />
+                    </div>
+                    <div>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Service Role API Key</label>
+                       <input type="password" value={supabaseKey} onChange={(e)=>setSupabaseKey(e.target.value)} placeholder="Supabase Key" className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold" />
+                    </div>
+                  </div>
+                  <button onClick={() => { setSupabaseConfig({ url: supabaseUrl, key: supabaseKey }); alert('Konfigurasi Disimpan.'); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase hover:bg-indigo-700 transition-all">Update Parameter Sistem</button>
                </div>
             </div>
           )
         ) : (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <div className={`bg-white border-4 border-dashed rounded-3xl p-8 flex flex-col items-center gap-4 transition-all ${file ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-200'}`}>
-              <div className={`p-6 rounded-full ${file ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-300'}`}><FileUp size={40} /></div>
-              <div className="text-center">
-                <p className="text-sm font-black uppercase text-slate-900">{file ? file.name : 'UNGGAH FILE CSV'}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Presisi IDPEL 12 digit akan dipertahankan</p>
+          <div className="max-w-5xl mx-auto space-y-8">
+            {/* Pemilihan Tabel */}
+            <div className="bg-white p-8 border border-slate-200 rounded-[32px] shadow-sm flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black uppercase text-slate-900">Database Target Sinkronisasi</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Pilih tabel database untuk menerima data CSV Anda</p>
               </div>
-              <input type="file" accept=".csv" onChange={(e)=>setFile(e.target.files?.[0] || null)} className="hidden" id="admin-csv-upload" />
-              <label htmlFor="admin-csv-upload" className="px-8 py-3 bg-slate-900 text-white text-[10px] font-black uppercase rounded-xl cursor-pointer">CARI FILE</label>
+              <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+                <button 
+                  onClick={() => setTargetTable('lpb_data')} 
+                  className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${targetTable === 'lpb_data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  <Database size={14}/> Prabayar (LPB)
+                </button>
+                <button 
+                  onClick={() => setTargetTable('invoice_data')} 
+                  className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${targetTable === 'invoice_data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  <FileSpreadsheet size={14}/> Invoice (Tagihan)
+                </button>
+              </div>
             </div>
 
+            {/* Area Upload */}
+            <div className={`bg-white border-4 border-dashed rounded-[40px] p-12 flex flex-col items-center gap-6 transition-all ${file ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-200 hover:border-indigo-400'}`}>
+              <div className={`p-8 rounded-[32px] ${file ? 'bg-emerald-600 text-white shadow-2xl' : 'bg-slate-100 text-slate-300'}`}>
+                <FileUp size={48} />
+              </div>
+              <div className="text-center space-y-2">
+                <p className="text-lg font-black uppercase text-slate-900 tracking-tight">{file ? file.name : 'Seret File CSV ke Sini'}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Format file didukung: .csv (Koma/Semicolon delimited)</p>
+              </div>
+              <input type="file" accept=".csv" onChange={(e)=>setFile(e.target.files?.[0] || null)} className="hidden" id="admin-csv-upload-main" />
+              <label htmlFor="admin-csv-upload-main" className="px-10 py-4 bg-slate-950 text-white text-[11px] font-black uppercase rounded-2xl cursor-pointer hover:bg-indigo-600 transition-all active:scale-95 shadow-2xl">
+                {file ? 'GANTI FILE CSV' : 'PILIH DARI PERANGKAT'}
+              </label>
+            </div>
+
+            {/* Pratinjau Mapping */}
             {file && (
-              <div className="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="bg-slate-50 p-3 border-b border-slate-200 flex items-center justify-between">
-                  <h4 className="text-[10px] font-black uppercase text-slate-500 flex items-center gap-2"><Table size={14}/> Pratinjau Data CSV</h4>
-                  <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase flex items-center gap-1.5 ${isCompatible ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                    {isCompatible ? <Check size={10}/> : <AlertCircle size={10}/>}
-                    {isCompatible ? 'Siap Sinkron ke Cloud' : 'IDPEL Tidak Ditemukan'}
+              <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm fade-in">
+                <div className="bg-slate-900 px-8 py-5 flex items-center justify-between">
+                  <h4 className="text-[11px] font-black uppercase text-white tracking-[0.2em] flex items-center gap-3">
+                    <Table size={16} className="text-indigo-400"/> Mesin Pratinjau Mapping
+                  </h4>
+                  <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 ${isCompatible ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                    {isCompatible ? <Check size={14}/> : <AlertCircle size={14}/>}
+                    {isCompatible ? `STRUKTUR VALID KE ${targetTable.toUpperCase()}` : 'IDPEL TIDAK TERDETEKSI'}
                   </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-100 text-[8px] font-black uppercase text-slate-400">
+                    <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-100">
                       <tr>
-                        {['idpel', 'nama', 'unit', 'daya', 'petugas', 'latitude'].map(col => (
-                          <th key={col} className="px-4 py-3 border-r border-slate-200">{col}</th>
-                        ))}
+                        {targetTable === 'lpb_data' ? (
+                          ['idpel', 'unit', 'nama', 'petugas', 'daya', 'latitude'].map(col => (
+                            <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>
+                          ))
+                        ) : (
+                          ['idpel', 'unit', 'petugas', 'tgl', 'totallembar', 'lunas_mandiri'].map(col => (
+                            <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>
+                          ))
+                        )}
                       </tr>
                     </thead>
-                    <tbody className="text-[10px] font-bold">
+                    <tbody className="text-[11px] font-bold text-slate-600">
                       {previewData.map((row, idx) => (
-                        <tr key={idx} className="border-b border-slate-100">
-                          <td className="px-4 py-2 font-mono text-indigo-600 tracking-normal">{row.idpel}</td>
-                          <td className="px-4 py-2 uppercase truncate max-w-[150px]">{row.nama}</td>
-                          <td className="px-4 py-2 uppercase">{row.unit}</td>
-                          <td className="px-4 py-2 font-black text-slate-900">{row.daya}</td>
-                          <td className="px-4 py-2 uppercase italic text-slate-400">{row.petugas}</td>
-                          <td className="px-4 py-2 text-slate-500">{row.latitude}</td>
+                        <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
+                          <td className="px-6 py-3 font-mono text-indigo-600 font-black">{row.idpel}</td>
+                          {targetTable === 'lpb_data' ? (
+                            <>
+                              <td className="px-6 py-3 uppercase">{row.unit}</td>
+                              <td className="px-6 py-3 uppercase truncate max-w-[150px]">{row.nama}</td>
+                              <td className="px-6 py-3 uppercase italic text-slate-400">{row.petugas}</td>
+                              <td className="px-6 py-3 font-black text-slate-900">{row.daya}</td>
+                              <td className="px-6 py-3 text-slate-400">{row.latitude}</td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="px-6 py-3 uppercase">{row.unit}</td>
+                              <td className="px-6 py-3 uppercase italic text-slate-400">{row.petugas}</td>
+                              <td className="px-6 py-3 font-mono">{row.tgl}</td>
+                              <td className="px-6 py-3 text-center">{row.totallembar}</td>
+                              <td className="px-6 py-3 text-emerald-600 font-black text-center">{row.lunas_mandiri}</td>
+                            </>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -313,31 +332,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
             )}
 
             {loading && (
-              <div className="bg-white border-2 border-emerald-100 rounded-2xl p-5 space-y-3">
-                 <div className="flex justify-between text-[10px] font-black uppercase text-emerald-700">
-                    <span className="flex items-center gap-2 animate-pulse">SINKRONISASI AKTIF...</span>
-                    <span>{uploadProgress.current}/{uploadProgress.total} BATCH</span>
+              <div className="bg-white border-2 border-emerald-100 rounded-[28px] p-8 space-y-4 shadow-xl">
+                 <div className="flex justify-between text-xs font-black uppercase text-emerald-700">
+                    <span className="flex items-center gap-3 animate-pulse">
+                      <Loader2 className="animate-spin" size={16}/> SINKRONISASI BATCH AKTIF...
+                    </span>
+                    <span>{uploadProgress.current} DARI {uploadProgress.total} BATCH SELESAI</span>
                  </div>
-                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full transition-all duration-300" style={{width: `${(uploadProgress.current/uploadProgress.total)*100}%`}}></div>
+                 <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                    <div className="bg-emerald-500 h-full transition-all duration-500 ease-out shadow-[0_0_10px_#10b981]" style={{width: `${(uploadProgress.current/uploadProgress.total)*100}%`}}></div>
                  </div>
               </div>
             )}
 
             {status.type && (
-              <div className={`p-4 rounded-xl border-2 flex items-center gap-4 animate-in slide-in-from-bottom-2 ${status.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}>
-                {status.type === 'success' ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
-                <p className="text-[10px] font-black uppercase italic">{status.message}</p>
+              <div className={`p-6 rounded-[28px] border-2 flex items-center gap-5 shadow-lg animate-in slide-in-from-bottom-4 ${status.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}>
+                <div className={`p-3 rounded-2xl ${status.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                   {status.type === 'success' ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
+                </div>
+                <p className="text-xs font-black uppercase italic tracking-tight">{status.message}</p>
               </div>
             )}
 
             <button 
               disabled={!file || !isCompatible || loading} 
               onClick={handleUpload} 
-              className={`w-full py-5 rounded-2xl flex items-center justify-center gap-4 text-xs font-black uppercase transition-all ${!file || !isCompatible || loading ? 'bg-slate-200 text-slate-400' : 'bg-emerald-600 text-white shadow-xl hover:bg-emerald-700'}`}
+              className={`w-full py-6 rounded-3xl flex items-center justify-center gap-5 text-sm font-black uppercase transition-all shadow-2xl ${!file || !isCompatible || loading ? 'bg-slate-200 text-slate-400' : 'bg-slate-950 text-white hover:bg-emerald-700 hover:shadow-emerald-500/20 active:scale-95'}`}
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : <Database size={20} />}
-              {loading ? 'MEMPROSES...' : 'KIRIM KE SUPABASE CLOUD'}
+              {loading ? 'MEMPROSES DATA...' : `LUNCURKAN SINKRONISASI KE ${targetTable.toUpperCase()}`}
             </button>
           </div>
         )}

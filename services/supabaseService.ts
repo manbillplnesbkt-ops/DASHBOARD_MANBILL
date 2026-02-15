@@ -226,11 +226,11 @@ export async function testSupabaseConnection(): Promise<{success: boolean, messa
   } catch (err) { return { success: false, message: 'Offline' }; }
 }
 
-export async function uploadToSupabase(data: any[]): Promise<{success: boolean, message: string}> {
+export async function uploadToSupabase(data: any[], tableName: string = 'lpb_data'): Promise<{success: boolean, message: string}> {
   const config = getSupabaseConfig();
   if (!config.url || !config.key) return { success: false, message: 'Config Missing' };
   try {
-    const response = await fetch(`${config.url.replace(/\/$/, '')}/rest/v1/lpb_data`, {
+    const response = await fetch(`${config.url.replace(/\/$/, '')}/rest/v1/${tableName}`, {
       method: 'POST',
       headers: {
         'apikey': config.key.trim(),
