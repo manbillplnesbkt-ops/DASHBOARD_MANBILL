@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, FileUp, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Settings, Database, Activity, AlertTriangle, LockKeyhole, Wifi, RefreshCcw, Zap, ExternalLink, Trash2, Table, Check, ChevronDown, FileSpreadsheet } from 'lucide-react';
+import { Upload, FileUp, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Settings, Database, Activity, AlertTriangle, LockKeyhole, Wifi, RefreshCcw, Zap, ExternalLink, Trash2, Table, Check, ChevronDown, FileSpreadsheet, Code, Copy } from 'lucide-react';
 import { uploadToSupabase, getSupabaseConfig, setSupabaseConfig, testSupabaseConnection } from '../services/supabaseService';
 
 interface AdminPanelProps {
@@ -28,10 +28,78 @@ const NUMERIC_COLUMNS = [
   'totallembar', 'lunas_mandiri', 'lunas_offline', 'janji_bayar'
 ];
 
+const SQL_SCHEMA_HELP = `-- 1. Buat Tabel lpb_data (Prabayar)
+CREATE TABLE lpb_data (
+  idpel TEXT PRIMARY KEY,
+  unit TEXT, 
+  nama TEXT, 
+  alamat TEXT, 
+  blth TEXT, 
+  petugas TEXT,
+  latitude FLOAT8, 
+  longitude FLOAT8, 
+  validasi TEXT DEFAULT 'BELUM VALIDASI',
+  tegangan NUMERIC DEFAULT 0, 
+  arus NUMERIC DEFAULT 0, 
+  cosphi NUMERIC DEFAULT 0,
+  indikator TEXT DEFAULT 'NORMAL', 
+  sisa_kwh NUMERIC DEFAULT 0, 
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  catatan TEXT, 
+  waktu_jam TEXT, 
+  no_meter TEXT, 
+  tarif TEXT, 
+  daya TEXT, 
+  kode_rbm TEXT, 
+  tarif_index NUMERIC DEFAULT 0, 
+  power_limit NUMERIC DEFAULT 0, 
+  kwh_kumulatif NUMERIC DEFAULT 0, 
+  temper TEXT, 
+  tutup_meter TEXT, 
+  segel TEXT, 
+  lcd TEXT, 
+  keypad TEXT, 
+  jml_terminal NUMERIC DEFAULT 0, 
+  indi_temper TEXT, 
+  relay TEXT, 
+  tgl TEXT
+);
+
+-- 2. Buat Tabel invoice_data (Tagihan)
+CREATE TABLE invoice_data (
+  idpel TEXT PRIMARY KEY, -- Opsional jika data per petugas/hari
+  unit TEXT, 
+  nama TEXT, 
+  alamat TEXT, 
+  blth TEXT, 
+  petugas TEXT,
+  latitude FLOAT8, 
+  longitude FLOAT8, 
+  tgl TEXT,
+  totallembar NUMERIC DEFAULT 0, 
+  lunas_mandiri NUMERIC DEFAULT 0, 
+  lunas_offline NUMERIC DEFAULT 0, 
+  janji_bayar NUMERIC DEFAULT 0, 
+  validasi TEXT, 
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Kebijakan Keamanan (RLS)
+ALTER TABLE lpb_data ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access" ON lpb_data FOR SELECT USING (true);
+CREATE POLICY "Public Insert" ON lpb_data FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update" ON lpb_data FOR UPDATE USING (true);
+
+ALTER TABLE invoice_data ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access Invoice" ON invoice_data FOR SELECT USING (true);
+CREATE POLICY "Public Insert Invoice" ON invoice_data FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Invoice" ON invoice_data FOR UPDATE USING (true);`;
+
 const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('INPUT');
   const [targetTable, setTargetTable] = useState<'lpb_data' | 'invoice_data'>('lpb_data');
   const [isSettingAuth, setIsSettingAuth] = useState(false);
+  const [showSqlHelp, setShowSqlHelp] = useState(false);
   const [passInput, setPassInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,6 +116,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     setSupabaseUrl(config.url);
     setSupabaseKey(config.key);
   }, []);
+
+  const copySql = () => {
+    navigator.clipboard.writeText(SQL_SCHEMA_HELP);
+    alert('SQL Skema disalin ke clipboard!');
+  };
 
   const fixScientific = (str: string) => {
     if (!str) return '';
@@ -93,12 +166,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
       headers.forEach((h, idx) => {
         let key = h.toLowerCase().replace(/\s+/g, '_');
         
-        // Specialized Mapping
+        // Comprehensive Column Mapping Logic
         if (h === "IDPEL" || h.includes("ID PEL")) key = "idpel";
         else if (h.includes("NAMA")) key = "nama";
         else if (h.includes("UNIT")) key = "unit";
         else if (h.includes("PETUGAS") || h.includes("PEGAWAI")) key = "petugas";
         else if (h.includes("BLTH")) key = "blth";
+        else if (h === "LATITUDE" || h === "Y" || h.includes("KOORDINAT Y") || h.includes("LAT")) key = "latitude";
+        else if (h === "LONGITUDE" || h === "X" || h.includes("KOORDINAT X") || h.includes("LONG")) key = "longitude";
         else if (h === "TGL" || h === "TANGGAL" || h === "TGL_BAYAR") key = "tgl";
         else if (h === "TOTAL LEMBAR" || h === "TOTALLEMBAR" || h === "TOTAL_WO") key = "totallembar";
         else if (h.includes("LUNAS MANDIRI") || h === "LM" || h === "MANDIRI") key = "lunas_mandiri";
@@ -114,7 +189,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
         }
       });
 
-      if (obj.idpel) result.push(obj);
+      // Filter validasi baris:
+      // Untuk lpb_data wajib ada idpel.
+      // Untuk invoice_data wajib ada idpel ATAU petugas (karena user menyebut invoice tidak pakai idpel).
+      if (targetTable === 'lpb_data') {
+        if (obj.idpel) result.push(obj);
+      } else {
+        if (obj.idpel || obj.petugas) {
+          // Jika idpel kosong pada invoice, berikan nilai fallback unik (petugas+tgl) atau biarkan kosong jika DB handle
+          if (!obj.idpel) obj.idpel = `${obj.petugas || 'TMP'}_${obj.tgl || Date.now()}_${i}`;
+          result.push(obj);
+        }
+      }
     }
 
     if (isPreview) setMappedColumns(detectedMappedKeys);
@@ -145,7 +231,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
       const text = await file.text();
       const rawData = await parseCSV(text, false);
       
-      if (rawData.length === 0) throw new Error('Data tidak valid atau kolom IDPEL tidak ditemukan.');
+      if (rawData.length === 0) {
+        throw new Error(targetTable === 'lpb_data' 
+          ? 'Data tidak valid atau kolom IDPEL tidak ditemukan.' 
+          : 'Data tidak valid atau kolom PETUGAS tidak ditemukan.');
+      }
 
       let allData = rawData;
       if (targetTable === 'lpb_data') {
@@ -178,11 +268,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     }
   };
 
-  const isCompatible = useMemo(() => mappedColumns.includes('idpel'), [mappedColumns]);
+  // Kompatibilitas tabel:
+  // lpb_data butuh 'idpel'.
+  // invoice_data butuh 'idpel' ATAU 'petugas'.
+  const isCompatible = useMemo(() => {
+    if (targetTable === 'lpb_data') return mappedColumns.includes('idpel');
+    return mappedColumns.includes('idpel') || mappedColumns.includes('petugas');
+  }, [mappedColumns, targetTable]);
 
   return (
     <div className="bg-white border-2 border-slate-300 rounded-[40px] flex flex-col h-full shadow-2xl overflow-hidden fade-in">
-      {/* Header Panel Admin */}
       <div className="bg-slate-950 p-8 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-6">
           <button onClick={onBack} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 hover:text-white transition-all">
@@ -192,7 +287,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
             <h2 className="text-base font-black text-white uppercase tracking-[0.2em] italic leading-none flex items-center gap-3">
               <Zap size={20} className="text-emerald-500 fill-emerald-500" /> PUSAT KONTROL DATA
             </h2>
-            <p className="text-[10px] font-bold text-slate-500 uppercase mt-2 tracking-widest italic">Secure Supabase Tunnel Active</p>
+            <div className="flex items-center gap-4 mt-2">
+               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest italic leading-none">Secure Supabase Tunnel Active</p>
+               <button onClick={() => setShowSqlHelp(!showSqlHelp)} className="text-[10px] font-black text-indigo-400 hover:text-white uppercase tracking-widest flex items-center gap-2">
+                 <Code size={12}/> SQL SCHEMA HELP
+               </button>
+            </div>
           </div>
         </div>
         <div className="flex bg-white/5 p-1.5 rounded-2xl border border-white/5">
@@ -201,7 +301,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
         </div>
       </div>
 
-      <div className="flex-1 p-8 overflow-auto bg-slate-50/50">
+      <div className="flex-1 p-8 overflow-auto bg-slate-50/50 relative">
+        {showSqlHelp && (
+          <div className="absolute top-0 left-0 right-0 z-50 p-8 fade-in">
+            <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h4 className="text-xs font-black text-indigo-400 uppercase">Supabase Table Structure</h4>
+                <div className="flex gap-2">
+                   <button onClick={copySql} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all"><Copy size={16}/></button>
+                   <button onClick={() => setShowSqlHelp(false)} className="p-2 bg-rose-500/20 hover:bg-rose-500 text-white rounded-xl transition-all">TUTUP</button>
+                </div>
+              </div>
+              <pre className="text-[9px] font-mono text-slate-400 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-[400px]">
+                {SQL_SCHEMA_HELP}
+              </pre>
+              <p className="text-[9px] font-bold text-slate-500 uppercase italic">Pastikan tabel target memiliki skema yang sesuai dengan unggahan Anda.</p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'SETTING' ? (
           !isSettingAuth ? (
             <div className="flex justify-center py-20">
@@ -209,7 +327,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
                 <div className="text-center space-y-2">
                    <div className="p-4 bg-slate-900 text-indigo-400 rounded-3xl w-fit mx-auto mb-4"><LockKeyhole size={32}/></div>
                    <h3 className="text-xl font-black uppercase tracking-tight">Otorisasi Akses</h3>
-                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Konfigurasi Infrastruktur Cloud</p>
                 </div>
                 <input type="password" value={passInput} onChange={(e)=>setPassInput(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl px-6 py-4 text-center font-black text-lg focus:border-indigo-600 outline-none transition-all" placeholder="••••••••" />
                 <button type="submit" className="w-full py-5 bg-slate-950 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all">Verifikasi Identitas</button>
@@ -238,53 +355,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
           )
         ) : (
           <div className="max-w-5xl mx-auto space-y-8">
-            {/* Pemilihan Tabel */}
             <div className="bg-white p-8 border border-slate-200 rounded-[32px] shadow-sm flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-black uppercase text-slate-900">Database Target Sinkronisasi</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Pilih tabel database untuk menerima data CSV Anda</p>
               </div>
               <div className="flex bg-slate-100 p-1.5 rounded-2xl">
-                <button 
-                  onClick={() => setTargetTable('lpb_data')} 
-                  className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${targetTable === 'lpb_data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
-                >
-                  <Database size={14}/> Prabayar (LPB)
-                </button>
-                <button 
-                  onClick={() => setTargetTable('invoice_data')} 
-                  className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${targetTable === 'invoice_data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
-                >
-                  <FileSpreadsheet size={14}/> Invoice (Tagihan)
-                </button>
+                <button onClick={() => setTargetTable('lpb_data')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${targetTable === 'lpb_data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}><Database size={14}/> Prabayar</button>
+                <button onClick={() => setTargetTable('invoice_data')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${targetTable === 'invoice_data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}><FileSpreadsheet size={14}/> Invoice</button>
               </div>
             </div>
 
-            {/* Area Upload */}
             <div className={`bg-white border-4 border-dashed rounded-[40px] p-12 flex flex-col items-center gap-6 transition-all ${file ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-200 hover:border-indigo-400'}`}>
-              <div className={`p-8 rounded-[32px] ${file ? 'bg-emerald-600 text-white shadow-2xl' : 'bg-slate-100 text-slate-300'}`}>
-                <FileUp size={48} />
-              </div>
+              <div className={`p-8 rounded-[32px] ${file ? 'bg-emerald-600 text-white shadow-2xl' : 'bg-slate-100 text-slate-300'}`}><FileUp size={48} /></div>
               <div className="text-center space-y-2">
                 <p className="text-lg font-black uppercase text-slate-900 tracking-tight">{file ? file.name : 'Seret File CSV ke Sini'}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Format file didukung: .csv (Koma/Semicolon delimited)</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mendukung Delimiter Koma (,) atau Semicolon (;)</p>
               </div>
               <input type="file" accept=".csv" onChange={(e)=>setFile(e.target.files?.[0] || null)} className="hidden" id="admin-csv-upload-main" />
-              <label htmlFor="admin-csv-upload-main" className="px-10 py-4 bg-slate-950 text-white text-[11px] font-black uppercase rounded-2xl cursor-pointer hover:bg-indigo-600 transition-all active:scale-95 shadow-2xl">
+              <label htmlFor="admin-csv-upload-main" className="px-10 py-4 bg-slate-950 text-white text-[11px] font-black uppercase rounded-2xl cursor-pointer hover:bg-indigo-600 transition-all shadow-2xl">
                 {file ? 'GANTI FILE CSV' : 'PILIH DARI PERANGKAT'}
               </label>
             </div>
 
-            {/* Pratinjau Mapping */}
             {file && (
               <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm fade-in">
                 <div className="bg-slate-900 px-8 py-5 flex items-center justify-between">
-                  <h4 className="text-[11px] font-black uppercase text-white tracking-[0.2em] flex items-center gap-3">
-                    <Table size={16} className="text-indigo-400"/> Mesin Pratinjau Mapping
-                  </h4>
+                  <h4 className="text-[11px] font-black uppercase text-white tracking-[0.2em] flex items-center gap-3"><Table size={16} className="text-indigo-400"/> Mapping Preview</h4>
                   <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 ${isCompatible ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
                     {isCompatible ? <Check size={14}/> : <AlertCircle size={14}/>}
-                    {isCompatible ? `STRUKTUR VALID KE ${targetTable.toUpperCase()}` : 'IDPEL TIDAK TERDETEKSI'}
+                    {isCompatible ? `Sesuai Target ${targetTable.toUpperCase()}` : (targetTable === 'lpb_data' ? 'IDPEL Tidak Ditemukan' : 'PETUGAS Tidak Ditemukan')}
                   </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -292,35 +392,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
                     <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-100">
                       <tr>
                         {targetTable === 'lpb_data' ? (
-                          ['idpel', 'unit', 'nama', 'petugas', 'daya', 'latitude'].map(col => (
-                            <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>
-                          ))
+                          ['idpel', 'unit', 'nama', 'petugas', 'latitude', 'longitude'].map(col => <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>)
                         ) : (
-                          ['idpel', 'unit', 'petugas', 'tgl', 'totallembar', 'lunas_mandiri'].map(col => (
-                            <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>
-                          ))
+                          ['petugas', 'unit', 'tgl', 'totallembar', 'lunas_mandiri', 'idpel (auto)'].map(col => <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>)
                         )}
                       </tr>
                     </thead>
                     <tbody className="text-[11px] font-bold text-slate-600">
                       {previewData.map((row, idx) => (
                         <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
-                          <td className="px-6 py-3 font-mono text-indigo-600 font-black">{row.idpel}</td>
                           {targetTable === 'lpb_data' ? (
                             <>
+                              <td className="px-6 py-3 font-mono text-indigo-600 font-black">{row.idpel}</td>
                               <td className="px-6 py-3 uppercase">{row.unit}</td>
                               <td className="px-6 py-3 uppercase truncate max-w-[150px]">{row.nama}</td>
                               <td className="px-6 py-3 uppercase italic text-slate-400">{row.petugas}</td>
-                              <td className="px-6 py-3 font-black text-slate-900">{row.daya}</td>
-                              <td className="px-6 py-3 text-slate-400">{row.latitude}</td>
+                              <td className="px-6 py-3 text-slate-400 font-mono">{row.latitude}</td>
+                              <td className="px-6 py-3 text-slate-400 font-mono">{row.longitude}</td>
                             </>
                           ) : (
                             <>
+                              <td className="px-6 py-3 uppercase italic font-black text-slate-900">{row.petugas}</td>
                               <td className="px-6 py-3 uppercase">{row.unit}</td>
-                              <td className="px-6 py-3 uppercase italic text-slate-400">{row.petugas}</td>
                               <td className="px-6 py-3 font-mono">{row.tgl}</td>
                               <td className="px-6 py-3 text-center">{row.totallembar}</td>
                               <td className="px-6 py-3 text-emerald-600 font-black text-center">{row.lunas_mandiri}</td>
+                              <td className="px-6 py-3 font-mono text-[9px] text-slate-300">{row.idpel}</td>
                             </>
                           )}
                         </tr>
@@ -334,13 +431,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
             {loading && (
               <div className="bg-white border-2 border-emerald-100 rounded-[28px] p-8 space-y-4 shadow-xl">
                  <div className="flex justify-between text-xs font-black uppercase text-emerald-700">
-                    <span className="flex items-center gap-3 animate-pulse">
-                      <Loader2 className="animate-spin" size={16}/> SINKRONISASI BATCH AKTIF...
-                    </span>
-                    <span>{uploadProgress.current} DARI {uploadProgress.total} BATCH SELESAI</span>
+                    <span className="flex items-center gap-3 animate-pulse"><Loader2 className="animate-spin" size={16}/> MENGUNGGAH BATCH DATA...</span>
+                    <span>{uploadProgress.current} / {uploadProgress.total} BATCH</span>
                  </div>
                  <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full transition-all duration-500 ease-out shadow-[0_0_10px_#10b981]" style={{width: `${(uploadProgress.current/uploadProgress.total)*100}%`}}></div>
+                    <div className="bg-emerald-500 h-full transition-all duration-500 ease-out" style={{width: `${(uploadProgress.current/uploadProgress.total)*100}%`}}></div>
                  </div>
               </div>
             )}
@@ -360,7 +455,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
               className={`w-full py-6 rounded-3xl flex items-center justify-center gap-5 text-sm font-black uppercase transition-all shadow-2xl ${!file || !isCompatible || loading ? 'bg-slate-200 text-slate-400' : 'bg-slate-950 text-white hover:bg-emerald-700 hover:shadow-emerald-500/20 active:scale-95'}`}
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : <Database size={20} />}
-              {loading ? 'MEMPROSES DATA...' : `LUNCURKAN SINKRONISASI KE ${targetTable.toUpperCase()}`}
+              {loading ? 'MEMPROSES DATA...' : `SINKRONISASI KE ${targetTable.toUpperCase()}`}
             </button>
           </div>
         )}
