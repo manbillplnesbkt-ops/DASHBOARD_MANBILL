@@ -103,6 +103,7 @@ const DataTable: React.FC<DataTableProps> = ({
         <th className="px-6 py-5 w-[250px] bg-slate-950">NAMA</th>
         <th className="px-6 py-5 w-[200px] bg-slate-950">PETUGAS</th>
         <th className="px-6 py-5 w-[110px] bg-slate-950 text-center">VALIDASI</th>
+        <th className="px-6 py-5 w-[180px] bg-slate-950">KETERANGAN</th>
         <th className="px-6 py-5 w-[90px] bg-slate-950 text-center">TEGANGAN</th>
         <th className="px-6 py-5 w-[90px] bg-slate-950 text-center">ARUS</th>
         <th className="px-6 py-5 w-[90px] bg-slate-950 text-center">COSPHI</th>
@@ -201,13 +202,13 @@ const DataTable: React.FC<DataTableProps> = ({
       </div>
       
       <div className="overflow-auto flex-1 bg-slate-50/30 scrollbar-thin">
-        <table className="w-full text-left border-collapse min-w-[1500px]">
+        <table className="w-full text-left border-collapse min-w-[1650px]">
           {isInvoiceMode ? renderInvoiceHeader() : renderNormalHeader()}
           
           <tbody className="text-[10px] font-bold">
             {paginatedData.length === 0 ? (
               <tr>
-                <td colSpan={isInvoiceMode ? (4 + uniqueDates.length * 4) : 14} className="p-40 text-center">
+                <td colSpan={isInvoiceMode ? (4 + uniqueDates.length * 4) : 15} className="p-40 text-center">
                   <div className="flex flex-col items-center gap-5 text-slate-300">
                     <Database size={64} className="opacity-20" />
                     <p className="font-extrabold uppercase tracking-[0.3em] text-slate-400">Database Engine Kosong</p>
@@ -242,7 +243,7 @@ const DataTable: React.FC<DataTableProps> = ({
             ) : (
               (paginatedData as LPBData[]).map((row, idx) => (
                 <tr 
-                  key={row.IDPEL + idx} 
+                  key={(row.IDPEL || `row-${idx}`) + idx} 
                   onClick={() => onRowClick(row)}
                   className={`
                     cursor-pointer transition-all border-b border-slate-100 group
@@ -251,7 +252,7 @@ const DataTable: React.FC<DataTableProps> = ({
                   `}
                 >
                   <td className="px-6 py-4 uppercase text-slate-500">{row.UNIT}</td>
-                  <td className="px-6 py-4 font-mono font-bold text-indigo-700">{row.IDPEL}</td>
+                  <td className="px-6 py-4 font-mono font-bold text-indigo-700">{row.IDPEL || '-'}</td>
                   <td className="px-6 py-4 uppercase text-slate-900 font-black truncate max-w-[250px]">{row.NAMA}</td>
                   <td className="px-6 py-4 uppercase text-slate-600 truncate">{row.PETUGAS}</td>
                   <td className="px-6 py-4 text-center">
@@ -259,6 +260,7 @@ const DataTable: React.FC<DataTableProps> = ({
                       {row.VALIDASI === 'VALID' ? 'VALID' : 'ANOMALI'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 uppercase text-slate-500 truncate max-w-[180px]">{row.CATATAN || '-'}</td>
                   <td className="px-6 py-4 text-center font-mono text-slate-600">{row.TEGANGAN}V</td>
                   <td className="px-6 py-4 text-center font-mono text-slate-600">{row.ARUS}A</td>
                   <td className="px-6 py-4 text-center font-mono text-slate-500">{row.COSPHI}</td>
