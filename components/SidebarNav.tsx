@@ -18,14 +18,17 @@ interface SidebarNavProps {
 
 const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => {
   const menuItems = [
-    { id: 'DASHBOARD', label: 'Prabayar', icon: LayoutDashboard },
-    { id: 'TAGIHAN', label: 'Invoice', icon: FileText },
-    { id: 'PEMUTUSAN', label: 'Pemutusan', icon: PowerOff },
-    { id: 'P NOL', label: 'P-Nol', icon: CircleSlash },
-    { id: 'PIUTANG', label: 'Piutang', icon: Wallet },
-    { id: 'KINERJA', label: 'Kinerja', icon: BarChart3 },
-    { id: 'ADMIN', label: 'Admin', icon: ShieldAlert, color: 'text-rose-400' },
+    { id: 'DASHBOARD', label: 'PRABAYAR', icon: LayoutDashboard },
+    { id: 'TAGIHAN', label: 'INVOICE', icon: FileText },
+    { id: 'PEMUTUSAN', label: 'PEMUTUSAN', icon: PowerOff },
+    { id: 'P NOL', label: 'P-NOL', icon: CircleSlash },
+    { id: 'PIUTANG', label: 'PIUTANG', icon: Wallet },
+    { id: 'KINERJA', label: 'KINERJA', icon: BarChart3 },
+    { id: 'ADMIN', label: 'ADMIN', icon: ShieldAlert },
   ];
+
+  // Warna Biru Terang untuk Aktif: text-sky-400
+  // Warna Putih untuk Dasar: text-white
 
   return (
     <div className="bg-slate-950 border-b border-white/5 shadow-2xl z-[1002] shrink-0">
@@ -51,14 +54,19 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ activePage, onPageChange }) => 
                 className={`
                   flex items-center gap-2.5 px-5 py-2.5 rounded-xl transition-all whitespace-nowrap group relative
                   ${isActive 
-                    ? 'bg-white/10 text-white' 
-                    : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'}
+                    ? `bg-sky-500/10 text-sky-400 shadow-sm border border-white/10` 
+                    : 'text-white hover:bg-white/5'}
                 `}
               >
-                <Icon size={16} className={isActive ? 'text-indigo-400' : `${item.color || 'text-slate-600'} group-hover:text-indigo-400`} />
-                <span className="text-[11px] font-bold tracking-wide">{item.label}</span>
+                <Icon 
+                  size={16} 
+                  className={`${isActive ? 'text-sky-400' : 'text-white/60 group-hover:text-white'} group-hover:scale-110 transition-transform`} 
+                />
+                <span className={`text-[11px] font-black tracking-widest ${isActive ? 'text-sky-400' : 'text-white'}`}>
+                  {item.label}
+                </span>
                 {isActive && (
-                  <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-500 shadow-[0_0_8px_#6366f1]"></div>
+                  <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]"></div>
                 )}
               </button>
             );
