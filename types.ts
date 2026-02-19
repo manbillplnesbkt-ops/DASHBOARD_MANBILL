@@ -29,16 +29,25 @@ export interface LPBData {
   PETUGAS: string;
   // Added TANGGAL property to support daily performance recap tracking
   TANGGAL?: string;
-  CATATAN?: string;
+  created_at?: string;
+  KETERANGAN?: string;
   WAKTU_JAM?: string;
   // Invoice specific fields
+  USER?: string;
   TOTALLEMBAR?: number;
+  TOTALRUPIAH?: number;
   LUNAS_MANDIRI?: number;
   LUNAS_OFFLINE?: number;
   JANJI_BAYAR?: number;
+  TOTAL?: number;
   // Geo coordinates used by Leaflet
   LATITUDE: number;
   LONGITUDE: number;
+}
+
+export interface WOKontrakData {
+  unit: string;
+  wo_invoice: number;
 }
 
 export interface FilterState {
