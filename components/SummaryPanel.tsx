@@ -136,19 +136,24 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data, isInvoiceMode = false
             <>
               <div className="col-span-3">TOTAL</div>
               <div className="col-span-1.5 text-center text-slate-400 font-mono">
-                {Object.values(summaryMap).reduce((a, b) => a + b.totalWo, 0)}
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
+                {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.totalWo, 0)}
               </div>
               <div className="col-span-2 text-center text-emerald-400 font-mono">
-                {Object.values(summaryMap).reduce((a, b) => a + (b.lunasMandiri + b.lunasOffline + b.janjiBayar), 0)}
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
+                {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + (b.lunasMandiri + b.lunasOffline + b.janjiBayar), 0)}
               </div>
               <div className="col-span-2 text-center text-indigo-400 font-mono">
-                {Object.values(summaryMap).reduce((a, b) => a + b.lunasMandiri, 0)}
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
+                {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.lunasMandiri, 0)}
               </div>
               <div className="col-span-2 text-center text-blue-400 font-mono">
-                {Object.values(summaryMap).reduce((a, b) => a + b.lunasOffline, 0)}
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
+                {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.lunasOffline, 0)}
               </div>
               <div className="col-span-1.5 text-center text-amber-400 font-mono">
-                {Object.values(summaryMap).reduce((a, b) => a + b.janjiBayar, 0)}
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
+                {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.janjiBayar, 0)}
               </div>
             </>
           ) : (
@@ -158,12 +163,15 @@ const SummaryPanel: React.FC<SummaryPanelProps> = ({ data, isInvoiceMode = false
                 TOTAL AGREGAT
               </div>
               <div className="col-span-2 text-center text-orange-400 font-mono text-xs">
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
                 {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.total, 0)}
               </div>
               <div className="col-span-2 text-center text-emerald-400 font-mono text-xs">
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
                 {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.valid, 0)}
               </div>
               <div className="col-span-2 text-center text-rose-400 font-mono text-xs">
+                {/* Fixed TS error by adding explicit types to reduce parameters */}
                 {Object.values(summaryMap).reduce((a: number, b: SummaryEntry) => a + b.invalid, 0)}
               </div>
             </>

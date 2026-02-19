@@ -30,7 +30,7 @@ export interface LPBData {
   // Added TANGGAL property to support daily performance recap tracking
   TANGGAL?: string;
   created_at?: string;
-  KETERANGAN?: string;
+  CATATAN?: string;
   WAKTU_JAM?: string;
   // Invoice specific fields
   USER?: string;

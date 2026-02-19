@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FilterState } from '../types';
-import { LayoutDashboard, Filter, Search, RefreshCcw, Clock, X } from 'lucide-react';
+import { LayoutDashboard, Filter, Search, RefreshCcw, Clock, X, RotateCcw } from 'lucide-react';
 
 interface HeaderProps {
   filters: FilterState;
@@ -22,6 +22,20 @@ const Header: React.FC<HeaderProps> = ({
   filters, setFilters, options, onRefresh, totalCount, isRefreshing, lastSync, activePageName
 }) => {
   const [timeAgo, setTimeAgo] = useState('Baru saja');
+
+  // Cek apakah ada filter yang sedang aktif
+  const hasActiveFilters = useMemo(() => {
+    return filters.blth !== '' || filters.unit !== '' || filters.PETUGAS !== '' || filters.validasi !== '';
+  }, [filters]);
+
+  const resetAllFilters = () => {
+    setFilters({
+      blth: '',
+      unit: '',
+      PETUGAS: '',
+      validasi: ''
+    });
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -103,6 +117,17 @@ const Header: React.FC<HeaderProps> = ({
               </button>
             )}
           </div>
+
+          {/* Tombol Global Reset */}
+          {hasActiveFilters && (
+            <button 
+              onClick={resetAllFilters}
+              className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl transition-all shadow-lg animate-in zoom-in-95 duration-200"
+            >
+              <RotateCcw size={14} className="animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-widest">RESET</span>
+            </button>
+          )}
         </div>
 
         <button 
