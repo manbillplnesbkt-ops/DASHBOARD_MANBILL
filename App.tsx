@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchTableDataFromSupabase, fetchDataByBounds } from './services/supabaseService';
-import { LPBData, FilterState, AdminAuthState } from './types';
+import { LPBData, FilterState, AdminAuthState, WOKontrakData } from './types';
 import Header from './components/Header';
 import InfoPanel from './components/InfoPanel';
 import MapPanel from './components/MapPanel';
@@ -19,6 +19,7 @@ const ADMIN_PASSWORD = "Adminmanbill";
 const App: React.FC = () => {
   const [lpbData, setLpbData] = useState<LPBData[]>([]);
   const [invoiceData, setInvoiceData] = useState<LPBData[]>([]);
+  const [woKontrakData, setWoKontrakData] = useState<WOKontrakData[]>([]);
   const [mapData, setMapData] = useState<LPBData[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState('Menginisialisasi Sistem Utama...');
@@ -57,6 +58,10 @@ const App: React.FC = () => {
       // Load Invoice (invoice_data)
       const invoiceResult = await fetchTableDataFromSupabase('invoice_data', force);
       setInvoiceData(invoiceResult.data);
+
+      // Load WO Kontrak
+      const woKontrakResult = await fetchTableDataFromSupabase('wo_kontrak', force);
+      setWoKontrakData(woKontrakResult.data);
       
       setLastSync(Date.now());
     } catch (err) {
@@ -100,6 +105,13 @@ const App: React.FC = () => {
     });
   }, [activeRawData, debouncedFilters]);
 
+  // Filter WO Kontrak purely by UNIT
+  const filteredWOKontrak = useMemo(() => {
+    const { unit } = debouncedFilters;
+    if (!unit) return woKontrakData;
+    return woKontrakData.filter(item => item.unit === unit);
+  }, [woKontrakData, debouncedFilters]);
+
   const filteredMapData = useMemo(() => {
     const { blth, unit, PETUGAS, validasi } = debouncedFilters;
     if (!blth && !unit && !PETUGAS && !validasi) return mapData;
@@ -136,13 +148,24 @@ const App: React.FC = () => {
 
   const activeTabCount = filteredAllData.length;
 
+  const resetFilters = useCallback(() => {
+    setFilters({
+      blth: '',
+      unit: '',
+      PETUGAS: '',
+      validasi: ''
+    });
+  }, []);
+
   const handleRowClick = useCallback((item: LPBData) => {
     setSelectedItem(item);
-  }, []);
+    resetFilters(); // Membersihkan filter saat baris diklik
+  }, [resetFilters]);
 
   const handlePetugasSelect = useCallback((petugasName: string) => {
     setSelectedPetugas(petugasName === selectedPetugas ? null : petugasName);
-  }, [selectedPetugas]);
+    resetFilters(); // Membersihkan filter saat petugas dipilih pada tabel tagihan
+  }, [selectedPetugas, resetFilters]);
 
   if (loading && lpbData.length === 0 && invoiceData.length === 0) {
     return (
@@ -183,7 +206,12 @@ const App: React.FC = () => {
                 />
               </div>
               <div className="col-span-12 lg:col-span-4 h-[500px]">
-                <InfoPanel data={null} allData={activeRawData} isInvoiceMode={true} />
+                <InfoPanel 
+                  data={null} 
+                  allData={filteredAllData} 
+                  woKontrakList={filteredWOKontrak} 
+                  isInvoiceMode={true} 
+                />
               </div>
             </>
           ) : (
@@ -192,7 +220,7 @@ const App: React.FC = () => {
                 <MapPanel data={filteredMapData} selectedItem={selectedItem} onBoundsChange={handleMapBoundsChange} />
               </div>
               <div className="col-span-12 lg:col-span-4 h-[500px]">
-                <InfoPanel data={selectedItem} allData={activeRawData} isInvoiceMode={false} />
+                <InfoPanel data={selectedItem} allData={filteredAllData} isInvoiceMode={false} />
               </div>
             </>
           )}
