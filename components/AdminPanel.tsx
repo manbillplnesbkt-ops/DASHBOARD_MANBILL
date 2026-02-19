@@ -201,6 +201,20 @@ const AdminPanel = ({ onBack, onRefreshData }: AdminPanelProps) => {
     return isNaN(parsed) ? null : parsed;
   };
 
+  const excelDateToJSDate = (serial: number) => {
+    const utc_days = Math.floor(serial - 25569);
+    const utc_value = utc_days * 86400;
+    const date_info = new Date(utc_value * 1000);
+    const fractional_day = serial - Math.floor(serial) + 0.0000001;
+    let total_seconds = Math.floor(86400 * fractional_day);
+    const seconds = total_seconds % 60;
+    total_seconds -= seconds;
+    const hours = Math.floor(total_seconds / (60 * 60));
+    const minutes = Math.floor(total_seconds / 60) % 60;
+    const d = new Date(date_info.getFullYear(), date_info.getMonth(), date_info.getDate(), hours, minutes, seconds);
+    return d.toISOString().split('T')[0]; // Return YYYY-MM-DD
+  };
+
   const parseFile = async (file: File, isPreview: boolean = false): Promise<any[]> => {
     const XLSX = await import('xlsx');
     return new Promise((resolve, reject) => {
@@ -257,7 +271,16 @@ const AdminPanel = ({ onBack, onRefreshData }: AdminPanelProps) => {
 
               if (ALLOWED_COLUMNS.includes(key)) {
                 if (i === 1 && !detectedMappedKeys.includes(key)) detectedMappedKeys.push(key);
-                let val = vals[idx] !== undefined ? String(vals[idx]) : '';
+                
+                let rawVal = vals[idx];
+                let val = '';
+                
+                if (key === 'tgl' && typeof rawVal === 'number') {
+                  val = excelDateToJSDate(rawVal);
+                } else {
+                  val = rawVal !== undefined ? String(rawVal) : '';
+                }
+
                 if (key === 'idpel') val = fixScientific(val);
                 if (NUMERIC_COLUMNS.includes(key)) obj[key] = cleanNumeric(val);
                 else obj[key] = val;
