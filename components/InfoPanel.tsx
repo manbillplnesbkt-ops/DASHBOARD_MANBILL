@@ -1,18 +1,21 @@
 
 import React, { useMemo } from 'react';
-import { LPBData } from '../types';
-import { User, MapPin, Hash, Zap, ShieldCheck, Activity, BarChart2, CheckCircle2, AlertCircle, Clock, Info, FileText, Smartphone, CreditCard, CalendarClock } from 'lucide-react';
+import { LPBData, WOKontrakData } from '../types';
+import { User, MapPin, Hash, Zap, ShieldCheck, Activity, BarChart2, CheckCircle2, AlertCircle, Clock, Info, FileText, Smartphone, CreditCard, CalendarClock, Target, ListChecks, TrendingUp } from 'lucide-react';
 
 interface InfoPanelProps {
   data: LPBData | null;
   allData?: LPBData[];
+  woKontrakList?: WOKontrakData[];
   isInvoiceMode?: boolean;
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ data, allData = [], isInvoiceMode = false }) => {
+const InfoPanel: React.FC<InfoPanelProps> = ({ data, allData = [], woKontrakList = [], isInvoiceMode = false }) => {
   const summary = useMemo(() => {
-    if (!allData.length) return { total: 0, valid: 0, invalid: 0, wo: 0, real: 0, mandiri: 0, offline: 0, janji: 0 };
-    return allData.reduce((acc, item) => {
+    if (!allData.length && !woKontrakList.length) return { total: 0, valid: 0, invalid: 0, woKontrak: 0, wo: 0, real: 0, mandiri: 0, offline: 0, janji: 0 };
+    
+    // Calculate values from Invoice Data (Filtered by Unit/BLTH/Petugas as per allData)
+    const stats = allData.reduce((acc, item) => {
       if (isInvoiceMode) {
         acc.wo += (item.TOTALLEMBAR || 0);
         const m = item.LUNAS_MANDIRI || 0;
@@ -28,8 +31,13 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ data, allData = [], isInvoiceMode
         else if (item.VALIDASI === 'TIDAK VALID') acc.invalid++;
       }
       return acc;
-    }, { total: 0, valid: 0, invalid: 0, wo: 0, real: 0, mandiri: 0, offline: 0, janji: 0 });
-  }, [allData, isInvoiceMode]);
+    }, { total: 0, valid: 0, invalid: 0, woKontrak: 0, wo: 0, real: 0, mandiri: 0, offline: 0, janji: 0 });
+
+    // Calculate WO Kontrak from the separate list (Filtered by Unit in App.tsx)
+    stats.woKontrak = woKontrakList.reduce((acc, item) => acc + (Number(item.wo_invoice) || 0), 0);
+
+    return stats;
+  }, [allData, woKontrakList, isInvoiceMode]);
 
   if (!data) {
     return (
@@ -46,29 +54,46 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ data, allData = [], isInvoiceMode
            </div>
         </div>
 
-        <div className="px-6 flex-1 flex flex-col justify-center gap-1.5 pb-6 overflow-hidden">
+        <div className="px-6 flex-1 flex flex-col justify-center gap-2 pb-6 overflow-hidden">
           {isInvoiceMode ? (
-            <div className="grid grid-cols-1 gap-1.5">
+            <div className="space-y-2">
+              {/* Main 3 Metrics as requested */}
               {[
-                { label: 'TOTAL WO', value: summary.wo, icon: FileText, color: 'slate' },
-                { label: 'TOTAL REALISASI', value: summary.real, icon: CheckCircle2, color: 'emerald' },
-                { label: 'LUNAS MANDIRI', value: summary.mandiri, icon: Smartphone, color: 'indigo' },
-                { label: 'LUNAS OFFLINE', value: summary.offline, icon: CreditCard, color: 'blue' },
-                { label: 'JANJI BAYAR', value: summary.janji, icon: CalendarClock, color: 'amber' }
+                { label: 'TOTAL WO KONTRAK', value: summary.woKontrak, icon: Target, color: 'indigo', bg: 'bg-indigo-50', percentage: summary.woKontrak > 0 ? (summary.real / summary.woKontrak) * 100 : 0 },
+                { label: 'TOTAL WO', value: summary.wo, icon: ListChecks, color: 'blue', bg: 'bg-blue-50', percentage: summary.wo > 0 ? (summary.real / summary.wo) * 100 : 0 },
+                { label: 'TOTAL REALISASI', value: summary.real, icon: TrendingUp, color: 'emerald', bg: 'bg-emerald-50' }
               ].map((stat) => (
-                <div key={stat.label} className="px-4 py-3 rounded-[18px] bg-slate-50 border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-md transition-all duration-300">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg bg-white border border-slate-100 text-${stat.color === 'slate' ? 'slate-500' : stat.color + '-500'} group-hover:scale-105 transition-transform`}>
-                      <stat.icon size={16} />
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{stat.label}</p>
-                      <p className={`text-lg font-black text-${stat.color === 'slate' ? 'slate-950' : stat.color + '-700'} tracking-tighter leading-none`}>{stat.value.toLocaleString()}</p>
+                <div key={stat.label} className={`p-5 rounded-[24px] ${stat.bg} border border-white flex items-center justify-between group hover:shadow-lg transition-all duration-300`}>
+                  <div className="flex flex-col">
+                    <p className={`text-[10px] font-black text-${stat.color}-900/40 uppercase tracking-widest leading-none mb-1`}>{stat.label}</p>
+                    <div className="flex items-baseline gap-2">
+                      <p className={`text-3xl font-black text-${stat.color}-700 tracking-tighter leading-none`}>{stat.value.toLocaleString()}</p>
+                      {stat.percentage !== undefined && (
+                        <span className={`text-[11px] font-black text-${stat.color}-600 bg-white/80 px-2 py-0.5 rounded-lg border border-${stat.color}-100 shadow-sm`}>
+                          {stat.percentage.toFixed(1)}%
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="text-[8px] font-black text-slate-300 uppercase italic opacity-0 group-hover:opacity-100 transition-opacity">Active</div>
+                  <div className={`p-3 rounded-xl bg-white shadow-sm text-${stat.color}-500 group-hover:scale-110 transition-transform`}>
+                    <stat.icon size={24} />
+                  </div>
                 </div>
               ))}
+
+              {/* Secondary Breakdown */}
+              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-slate-100">
+                {[
+                  { label: 'MANDIRI', value: summary.mandiri, color: 'indigo' },
+                  { label: 'OFFLINE', value: summary.offline, color: 'blue' },
+                  { label: 'JANJI', value: summary.janji, color: 'amber' }
+                ].map(sub => (
+                  <div key={sub.label} className="text-center p-2 bg-slate-50 rounded-xl">
+                    <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">{sub.label}</p>
+                    <p className={`text-sm font-black text-${sub.color}-600`}>{sub.value.toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
