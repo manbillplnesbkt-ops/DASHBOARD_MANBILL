@@ -52,15 +52,15 @@ const App: React.FC = () => {
     setLoadingStatus('Sinkronisasi Data Pusat...');
     try {
       // Load Prabayar (lpb_data)
-      const lpbResult = await fetchTableDataFromSupabase('lpb_data', force);
+      const lpbResult = await fetchTableDataFromSupabase<LPBData>('lpb_data', force);
       setLpbData(lpbResult.data);
       
       // Load Invoice (invoice_data)
-      const invoiceResult = await fetchTableDataFromSupabase('invoice_data', force);
+      const invoiceResult = await fetchTableDataFromSupabase<LPBData>('invoice_data', force);
       setInvoiceData(invoiceResult.data);
 
       // Load WO Kontrak
-      const woKontrakResult = await fetchTableDataFromSupabase('wo_kontrak', force);
+      const woKontrakResult = await fetchTableDataFromSupabase<WOKontrakData>('wo_kontrak', force);
       setWoKontrakData(woKontrakResult.data);
       
       setLastSync(Date.now());

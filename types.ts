@@ -27,10 +27,9 @@ export interface LPBData {
   INDI_TEMPER: string;
   RELAY: string;
   PETUGAS: string;
-  // Added TANGGAL property to support daily performance recap tracking
+  CATATAN?: string;
   TANGGAL?: string;
   created_at?: string;
-  CATATAN?: string;
   WAKTU_JAM?: string;
   // Invoice specific fields
   USER?: string;

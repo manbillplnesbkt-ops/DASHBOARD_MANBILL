@@ -144,7 +144,7 @@ export async function fetchDataByBounds(tableName: string, bounds: { minLat: num
   }
 }
 
-export async function fetchTableDataFromSupabase(tableName: string, forceRefresh = false): Promise<{data: any[], fromCache: boolean, timestamp: number, source: 'SUPABASE' | 'DISABLED'}> {
+export async function fetchTableDataFromSupabase<T = any>(tableName: string, forceRefresh = false): Promise<{data: T[], fromCache: boolean, timestamp: number, source: 'SUPABASE' | 'DISABLED'}> {
   const config = getSupabaseConfig();
   if (!config.url || !config.key) {
     return { data: [], fromCache: false, timestamp: Date.now(), source: 'DISABLED' };
@@ -200,7 +200,7 @@ export async function fetchTableDataFromSupabase(tableName: string, forceRefresh
     }
 
     // Special formatting for known data tables, otherwise return raw
-    let formatted = allData;
+    let formatted: any[] = allData;
     if (tableName === 'lpb_data' || tableName === 'invoice_data') {
        formatted = allData.map(formatSupabaseData);
     }
@@ -209,7 +209,7 @@ export async function fetchTableDataFromSupabase(tableName: string, forceRefresh
       const cache = await caches.open(CACHE_NAME);
       await cache.put(cacheKey, new Response(JSON.stringify(formatted)));
     }
-    return { data: formatted, fromCache: false, timestamp: Date.now(), source: 'SUPABASE' };
+    return { data: formatted as T[], fromCache: false, timestamp: Date.now(), source: 'SUPABASE' };
   } catch (error: any) {
     console.error(`Supabase fetch error for '${tableName}':`, error.message);
     return { data: [], fromCache: false, timestamp: Date.now(), source: 'DISABLED' };
