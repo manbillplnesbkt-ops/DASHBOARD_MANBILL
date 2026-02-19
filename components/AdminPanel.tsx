@@ -116,23 +116,23 @@ ALTER TABLE lpb_data ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Access" ON lpb_data;
 CREATE POLICY "Public Access" ON lpb_data FOR ALL USING (true);`;
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('INPUT');
-  const [targetTable, setTargetTable] = useState<'lpb_data' | 'invoice_data' | 'wo_kontrak'>('lpb_data');
-  const [isSettingAuth, setIsSettingAuth] = useState(false);
-  const [showSqlHelp, setShowSqlHelp] = useState(false);
-  const [passInput, setPassInput] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [previewData, setPreviewData] = useState<any[]>([]);
-  const [mappedColumns, setMappedColumns] = useState<string[]>([]);
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
-  const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
+const AdminPanel = ({ onBack, onRefreshData }: AdminPanelProps) => {
+  const [activeTab, setActiveTab] = React.useState<AdminTab>('INPUT');
+  const [targetTable, setTargetTable] = React.useState<'lpb_data' | 'invoice_data' | 'wo_kontrak'>('lpb_data');
+  const [isSettingAuth, setIsSettingAuth] = React.useState(false);
+  const [showSqlHelp, setShowSqlHelp] = React.useState(false);
+  const [passInput, setPassInput] = React.useState('');
+  const [file, setFile] = React.useState<File | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [previewData, setPreviewData] = React.useState<any[]>([]);
+  const [mappedColumns, setMappedColumns] = React.useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = React.useState({ current: 0, total: 0 });
+  const [status, setStatus] = React.useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
   
-  const [supabaseUrl, setSupabaseUrl] = useState('');
-  const [supabaseKey, setSupabaseKey] = useState('');
+  const [supabaseUrl, setSupabaseUrl] = React.useState('');
+  const [supabaseKey, setSupabaseKey] = React.useState('');
 
-  useEffect(() => {
+  React.useEffect(() => {
     const config = getSupabaseConfig();
     setSupabaseUrl(config.url);
     setSupabaseKey(config.key);
@@ -143,7 +143,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     alert('SQL Skema disalin! Tempelkan di SQL Editor Supabase Anda dan klik RUN.');
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx');
     let headers: string[] = [];
     let filename = "";
 
@@ -155,27 +156,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
         'KWH_KUMULATIF', 'JML_TERMINAL', 'INDI_TEMPER', 'KETERANGAN', 'WAKTU_JAM', 
         'NO_METER', 'TARIF', 'DAYA', 'KODE_RBM'
       ];
-      filename = "template_prabayar_lpb.csv";
+      filename = "template_prabayar_lpb.xlsx";
     } else if (targetTable === 'invoice_data') {
       headers = [
         'TGL', 'UNIT', 'USER', 'PETUGAS', 'TotalLembar', 'TotalRupiah', 'Lunas Mandiri', 'Lunas Offline', 'Janji Bayar', 'TOTAL'
       ];
-      filename = "template_invoice_tagihan.csv";
+      filename = "template_invoice_tagihan.xlsx";
     } else {
       headers = ['UNIT', 'WO_INVOICE'];
-      filename = "template_wo_kontrak.csv";
+      filename = "template_wo_kontrak.xlsx";
     }
 
-    const csvContent = headers.join(",") + "\n";
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Create Excel workbook
+    const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+    
+    // Generate buffer and download
+    XLSX.writeFile(workbook, filename);
   };
 
   const fixScientific = (str: string) => {
@@ -203,80 +201,97 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     return isNaN(parsed) ? null : parsed;
   };
 
-  const parseCSV = async (text: string, isPreview: boolean = false): Promise<any[]> => {
-    const lines = text.trim().split(/\r?\n/);
-    if (lines.length < 1) return [];
+  const parseFile = async (file: File, isPreview: boolean = false): Promise<any[]> => {
+    const XLSX = await import('xlsx');
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = e.target?.result;
+          const workbook = XLSX.read(data, { type: 'binary' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          
+          if (rows.length < 1) {
+            resolve([]);
+            return;
+          }
 
-    const firstLine = lines[0].replace(/^\uFEFF/, '');
-    const delimiter = firstLine.includes(';') ? ';' : ',';
-    const headers = firstLine.split(delimiter).map(h => h.replace(/"/g, '').trim().toUpperCase());
-    
-    const result = [];
-    const limit = isPreview ? Math.min(8, lines.length) : lines.length;
-    const detectedMappedKeys: string[] = [];
+          const headers = (rows[0] as any[]).map(h => String(h || '').trim().toUpperCase());
+          const result = [];
+          const limit = isPreview ? Math.min(8, rows.length) : rows.length;
+          const detectedMappedKeys: string[] = [];
 
-    for (let i = 1; i < limit; i++) {
-      const vals = lines[i].split(new RegExp(`${delimiter}(?=(?:(?:[^"]*"){2})*[^"]*$)`)).map(v => v.trim().replace(/"/g, ''));
-      const obj: any = {};
-      
-      headers.forEach((h, idx) => {
-        let key = '';
-        const rawHeader = h.trim();
+          for (let i = 1; i < limit; i++) {
+            const vals = rows[i];
+            if (!vals || vals.length === 0) continue;
+            const obj: any = {};
+            
+            headers.forEach((h, idx) => {
+              let key = '';
+              const rawHeader = h.trim();
 
-        // Specific Mapping Rules
-        if (rawHeader === "IDPEL" || rawHeader.includes("ID PEL")) key = "idpel";
-        else if (rawHeader.includes("NAMA")) key = "nama";
-        else if (rawHeader === "UNIT") key = "unit";
-        else if (rawHeader === "USER") key = "user";
-        else if (rawHeader === "PETUGAS" || rawHeader === "PEGAWAI") key = "petugas";
-        else if (rawHeader.includes("BLTH")) key = "blth";
-        else if (rawHeader === "LATITUDE" || rawHeader === "Y" || rawHeader.includes("KOORDINAT Y") || rawHeader.includes("LAT")) key = "latitude";
-        else if (rawHeader === "LONGITUDE" || rawHeader === "X" || rawHeader.includes("KOORDINAT X") || rawHeader.includes("LONG")) key = "longitude";
-        else if (rawHeader === "TGL" || rawHeader === "TANGGAL" || rawHeader === "TGL_BAYAR") key = "tgl";
-        else if (rawHeader === "TOTALLEMBAR" || rawHeader === "TOTAL_LEMBAR" || rawHeader === "TOTAL LEMBAR") key = "totallembar";
-        else if (rawHeader === "TOTALRUPIAH" || rawHeader === "TOTAL_RUPIAH" || rawHeader === "TOTAL RUPIAH") key = "totalrupiah";
-        else if (rawHeader.includes("LUNAS MANDIRI") || rawHeader === "LM" || rawHeader === "MANDIRI") key = "lunas_mandiri";
-        else if (rawHeader.includes("LUNAS OFFLINE") || rawHeader === "OFFLINE") key = "lunas_offline";
-        else if (rawHeader.includes("JANJI BAYAR") || rawHeader === "JANJI") key = "janji_bayar";
-        else if (rawHeader === "TOTAL") key = "total";
-        else if (rawHeader === "WO_INVOICE" || rawHeader.includes("WO INVOICE")) key = "wo_invoice";
-        else {
-          key = rawHeader.toLowerCase().replace(/\s+/g, '_');
+              // Specific Mapping Rules
+              if (rawHeader === "IDPEL" || rawHeader.includes("ID PEL")) key = "idpel";
+              else if (rawHeader.includes("NAMA")) key = "nama";
+              else if (rawHeader === "UNIT") key = "unit";
+              else if (rawHeader === "USER") key = "user";
+              else if (rawHeader === "PETUGAS" || rawHeader === "PEGAWAI") key = "petugas";
+              else if (rawHeader.includes("BLTH")) key = "blth";
+              else if (rawHeader === "LATITUDE" || rawHeader === "Y" || rawHeader.includes("KOORDINAT Y") || rawHeader.includes("LAT")) key = "latitude";
+              else if (rawHeader === "LONGITUDE" || rawHeader === "X" || rawHeader.includes("KOORDINAT X") || rawHeader.includes("LONG")) key = "longitude";
+              else if (rawHeader === "TGL" || rawHeader === "TANGGAL" || rawHeader === "TGL_BAYAR") key = "tgl";
+              else if (rawHeader === "TOTALLEMBAR" || rawHeader === "TOTAL_LEMBAR" || rawHeader === "TOTAL LEMBAR") key = "totallembar";
+              else if (rawHeader === "TOTALRUPIAH" || rawHeader === "TOTAL_RUPIAH" || rawHeader === "TOTAL RUPIAH") key = "totalrupiah";
+              else if (rawHeader.includes("LUNAS MANDIRI") || rawHeader === "LM" || rawHeader === "MANDIRI") key = "lunas_mandiri";
+              else if (rawHeader.includes("LUNAS OFFLINE") || rawHeader === "OFFLINE") key = "lunas_offline";
+              else if (rawHeader.includes("JANJI BAYAR") || rawHeader === "JANJI") key = "janji_bayar";
+              else if (rawHeader === "TOTAL") key = "total";
+              else if (rawHeader === "WO_INVOICE" || rawHeader.includes("WO INVOICE")) key = "wo_invoice";
+              else {
+                key = rawHeader.toLowerCase().replace(/\s+/g, '_');
+              }
+
+              if (targetTable === 'invoice_data' && key === 'idpel') return;
+
+              if (ALLOWED_COLUMNS.includes(key)) {
+                if (i === 1 && !detectedMappedKeys.includes(key)) detectedMappedKeys.push(key);
+                let val = vals[idx] !== undefined ? String(vals[idx]) : '';
+                if (key === 'idpel') val = fixScientific(val);
+                if (NUMERIC_COLUMNS.includes(key)) obj[key] = cleanNumeric(val);
+                else obj[key] = val;
+              }
+            });
+
+            if (targetTable === 'lpb_data') {
+              if (obj.idpel) result.push(obj);
+            } else if (targetTable === 'invoice_data') {
+              if (obj.petugas || obj.user) result.push(obj);
+            } else {
+              if (obj.unit) result.push(obj);
+            }
+          }
+
+          if (isPreview) setMappedColumns(detectedMappedKeys);
+          resolve(result);
+        } catch (error) {
+          reject(error);
         }
-
-        if (targetTable === 'invoice_data' && key === 'idpel') return;
-
-        if (ALLOWED_COLUMNS.includes(key)) {
-          if (i === 1 && !detectedMappedKeys.includes(key)) detectedMappedKeys.push(key);
-          let val = vals[idx] || '';
-          if (key === 'idpel') val = fixScientific(val);
-          if (NUMERIC_COLUMNS.includes(key)) obj[key] = cleanNumeric(val);
-          else obj[key] = val;
-        }
-      });
-
-      if (targetTable === 'lpb_data') {
-        if (obj.idpel) result.push(obj);
-      } else if (targetTable === 'invoice_data') {
-        if (obj.petugas || obj.user) result.push(obj);
-      } else {
-        if (obj.unit) result.push(obj);
-      }
-    }
-
-    if (isPreview) setMappedColumns(detectedMappedKeys);
-    return result;
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsBinaryString(file);
+    });
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (file) {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const text = e.target?.result as string;
-        const data = await parseCSV(text, true);
+      parseFile(file, true).then(data => {
         setPreviewData(data);
-      };
-      reader.readAsText(file);
+      }).catch(err => {
+        console.error("Preview error:", err);
+        setPreviewData([]);
+      });
     } else {
       setPreviewData([]);
       setMappedColumns([]);
@@ -289,8 +304,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     setStatus({ type: null, message: '' });
     
     try {
-      const text = await file.text();
-      const rawData = await parseCSV(text, false);
+      const rawData = await parseFile(file, false);
       
       if (rawData.length === 0) {
         throw new Error('Data tidak valid atau kolom kunci tidak ditemukan.');
@@ -336,7 +350,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
     }
   };
 
-  const isCompatible = useMemo(() => {
+  const isCompatible = React.useMemo(() => {
     if (targetTable === 'lpb_data') return mappedColumns.includes('idpel');
     if (targetTable === 'wo_kontrak') return mappedColumns.includes('unit') && mappedColumns.includes('wo_invoice');
     return mappedColumns.includes('petugas') || mappedColumns.includes('user');
@@ -426,7 +440,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
             <div className="bg-white p-8 border border-slate-200 rounded-[32px] shadow-sm flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-black uppercase text-slate-900">Database Target Sinkronisasi</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Pilih tabel database untuk menerima data CSV Anda</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Pilih tabel database untuk menerima data Excel/CSV Anda</p>
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex bg-slate-100 p-1.5 rounded-2xl">
@@ -446,12 +460,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack, onRefreshData }) => {
             <div className={`bg-white border-4 border-dashed rounded-[40px] p-12 flex flex-col items-center gap-6 transition-all ${file ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-200 hover:border-indigo-400'}`}>
               <div className={`p-8 rounded-[32px] ${file ? 'bg-emerald-600 text-white shadow-2xl' : 'bg-slate-100 text-slate-300'}`}><FileUp size={48} /></div>
               <div className="text-center space-y-2">
-                <p className="text-lg font-black uppercase text-slate-900 tracking-tight">{file ? file.name : 'Seret File CSV ke Sini'}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mendukung Delimiter Koma (,) atau Semicolon (;)</p>
+                <p className="text-lg font-black uppercase text-slate-900 tracking-tight">{file ? file.name : 'Seret File Excel/CSV ke Sini'}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mendukung Format .xlsx, .xls, dan .csv</p>
               </div>
-              <input type="file" accept=".csv" onChange={(e)=>setFile(e.target.files?.[0] || null)} className="hidden" id="admin-csv-upload-main" />
+              <input type="file" accept=".csv,.xlsx,.xls" onChange={(e)=>setFile(e.target.files?.[0] || null)} className="hidden" id="admin-csv-upload-main" />
               <label htmlFor="admin-csv-upload-main" className="px-10 py-4 bg-slate-950 text-white text-[11px] font-black uppercase rounded-2xl cursor-pointer hover:bg-indigo-600 transition-all shadow-2xl">
-                {file ? 'GANTI FILE CSV' : 'PILIH DARI PERANGKAT'}
+                {file ? 'GANTI FILE' : 'PILIH DARI PERANGKAT'}
               </label>
             </div>
 
