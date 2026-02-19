@@ -50,16 +50,22 @@ function formatIDPEL(val: any): string {
 
 function getValue(item: any, key: string): any {
   if (!item) return undefined;
+  
+  // 1. Exact match
   if (item[key] !== undefined && item[key] !== null && item[key] !== '') return item[key];
-  const upperKey = key.toUpperCase();
-  if (item[upperKey] !== undefined && item[upperKey] !== null && item[upperKey] !== '') return item[upperKey];
-  const underscoreKey = key.replace(/\s+/g, '_');
-  if (item[underscoreKey] !== undefined && item[underscoreKey] !== null && item[underscoreKey] !== '') return item[underscoreKey];
-  const foundKey = Object.keys(item).find(k => 
-    k.toLowerCase() === key.toLowerCase() || 
-    k.toLowerCase().replace(/\s+/g, '_') === key.toLowerCase().replace(/\s+/g, '_')
-  );
-  return (foundKey && item[foundKey] !== null) ? item[foundKey] : undefined;
+  
+  // 2. Case-insensitive match
+  const keys = Object.keys(item);
+  const lowerKey = key.toLowerCase();
+  const foundKey = keys.find(k => k.toLowerCase() === lowerKey);
+  if (foundKey && item[foundKey] !== undefined && item[foundKey] !== null && item[foundKey] !== '') return item[foundKey];
+
+  // 3. Underscore/Space match
+  const normalizedKey = lowerKey.replace(/[\s_]+/g, '');
+  const foundNormalizedKey = keys.find(k => k.toLowerCase().replace(/[\s_]+/g, '') === normalizedKey);
+  if (foundNormalizedKey && item[foundNormalizedKey] !== undefined && item[foundNormalizedKey] !== null && item[foundNormalizedKey] !== '') return item[foundNormalizedKey];
+
+  return undefined;
 }
 
 function parseNumber(val: any): number {
@@ -90,7 +96,7 @@ function formatSupabaseData(item: any): LPBData {
     COSPHI: getValue(item, 'cosphi') || '0',
     INDIKATOR: getValue(item, 'indikator') || 'NORMAL',
     TEMPER: getValue(item, 'temper') || '0',
-    KETERANGAN: getValue(item, 'catatan') || '',
+    KETERANGAN: getValue(item, 'keterangan') || getValue(item, 'catatan') || getValue(item, 'ket') || getValue(item, 'remark') || getValue(item, 'keterangan_tambahan') || '',
     WAKTU_JAM: getValue(item, 'waktu_jam') || '',
     "NO METER": getValue(item, 'no_meter') || '',
     TARIF: getValue(item, 'tarif') || '',

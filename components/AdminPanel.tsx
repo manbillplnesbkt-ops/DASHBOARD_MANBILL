@@ -256,6 +256,7 @@ const AdminPanel = ({ onBack, onRefreshData }: AdminPanelProps) => {
               else if (rawHeader === "LATITUDE" || rawHeader === "Y" || rawHeader.includes("KOORDINAT Y") || rawHeader.includes("LAT")) key = "latitude";
               else if (rawHeader === "LONGITUDE" || rawHeader === "X" || rawHeader.includes("KOORDINAT X") || rawHeader.includes("LONG")) key = "longitude";
               else if (rawHeader === "TGL" || rawHeader === "TANGGAL" || rawHeader === "TGL_BAYAR") key = "tgl";
+              else if (rawHeader === "KETERANGAN" || rawHeader === "KET" || rawHeader === "CATATAN" || rawHeader.includes("KETERANGAN")) key = "keterangan";
               else if (rawHeader === "TOTALLEMBAR" || rawHeader === "TOTAL_LEMBAR" || rawHeader === "TOTAL LEMBAR") key = "totallembar";
               else if (rawHeader === "TOTALRUPIAH" || rawHeader === "TOTAL_RUPIAH" || rawHeader === "TOTAL RUPIAH") key = "totalrupiah";
               else if (rawHeader.includes("LUNAS MANDIRI") || rawHeader === "LM" || rawHeader === "MANDIRI") key = "lunas_mandiri";
@@ -263,6 +264,7 @@ const AdminPanel = ({ onBack, onRefreshData }: AdminPanelProps) => {
               else if (rawHeader.includes("JANJI BAYAR") || rawHeader === "JANJI") key = "janji_bayar";
               else if (rawHeader === "TOTAL") key = "total";
               else if (rawHeader === "WO_INVOICE" || rawHeader.includes("WO INVOICE")) key = "wo_invoice";
+              else if (rawHeader === "KETERANGAN" || rawHeader.includes("KETERANGAN")) key = "keterangan";
               else {
                 key = rawHeader.toLowerCase().replace(/\s+/g, '_');
               }
@@ -506,7 +508,7 @@ const AdminPanel = ({ onBack, onRefreshData }: AdminPanelProps) => {
                     <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b border-slate-100">
                       <tr>
                         {targetTable === 'lpb_data' ? (
-                          ['idpel', 'unit', 'nama', 'petugas', 'latitude', 'longitude'].map(col => <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>)
+                          ['idpel', 'unit', 'nama', 'petugas', 'keterangan', 'latitude', 'longitude'].map(col => <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>)
                         ) : targetTable === 'invoice_data' ? (
                           ['tgl', 'unit', 'user', 'petugas', 'totallembar', 'totalrupiah', 'lunas_mandiri', 'lunas_offline', 'janji_bayar', 'total'].map(col => <th key={col} className="px-6 py-4 border-r border-slate-100">{col}</th>)
                         ) : (
@@ -523,6 +525,7 @@ const AdminPanel = ({ onBack, onRefreshData }: AdminPanelProps) => {
                               <td className="px-6 py-3 uppercase">{row.unit}</td>
                               <td className="px-6 py-3 uppercase truncate max-w-[150px]">{row.nama}</td>
                               <td className="px-6 py-3 uppercase italic text-slate-400">{row.petugas}</td>
+                              <td className="px-6 py-3 uppercase truncate max-w-[120px]">{row.keterangan || '-'}</td>
                               <td className="px-6 py-3 text-slate-400 font-mono">{row.latitude}</td>
                               <td className="px-6 py-3 text-slate-400 font-mono">{row.longitude}</td>
                             </>

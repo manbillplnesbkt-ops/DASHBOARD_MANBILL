@@ -133,9 +133,19 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ data, allData = [], woKontrakList
             <p className="text-[9px] font-bold text-slate-500 uppercase mt-0.5 tracking-widest">Metadata Pelanggan</p>
           </div>
         </div>
-        <span className={`status-badge text-[9px] font-black py-1 px-3 ${data.VALIDASI === 'VALID' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
-          {data.VALIDASI}
-        </span>
+        <div className="flex flex-col items-end gap-2">
+          <span className={`status-badge text-[9px] font-black py-1 px-3 ${data.VALIDASI === 'VALID' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+            {data.VALIDASI}
+          </span>
+          {data.KETERANGAN && (
+            <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-lg border border-white/5 max-w-[150px]">
+              <FileText size={10} className="text-indigo-400 shrink-0" />
+              <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest truncate">
+                {data.KETERANGAN}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 p-6 space-y-4 overflow-auto scrollbar-thin">
