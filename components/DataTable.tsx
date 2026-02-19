@@ -260,7 +260,7 @@ const DataTable: React.FC<DataTableProps> = ({
                       {row.VALIDASI === 'VALID' ? 'VALID' : 'ANOMALI'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 uppercase text-slate-500 truncate max-w-[180px]">{row.CATATAN || '-'}</td>
+                  <td className="px-6 py-4 uppercase text-slate-500 truncate max-w-[180px]">{row.KETERANGAN || '-'}</td>
                   <td className="px-6 py-4 text-center font-mono text-slate-600">{row.TEGANGAN}V</td>
                   <td className="px-6 py-4 text-center font-mono text-slate-600">{row.ARUS}A</td>
                   <td className="px-6 py-4 text-center font-mono text-slate-500">{row.COSPHI}</td>

@@ -90,7 +90,7 @@ function formatSupabaseData(item: any): LPBData {
     COSPHI: getValue(item, 'cosphi') || '0',
     INDIKATOR: getValue(item, 'indikator') || 'NORMAL',
     TEMPER: getValue(item, 'temper') || '0',
-    CATATAN: getValue(item, 'catatan') || '',
+    KETERANGAN: getValue(item, 'catatan') || '',
     WAKTU_JAM: getValue(item, 'waktu_jam') || '',
     "NO METER": getValue(item, 'no_meter') || '',
     TARIF: getValue(item, 'tarif') || '',

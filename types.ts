@@ -27,7 +27,7 @@ export interface LPBData {
   INDI_TEMPER: string;
   RELAY: string;
   PETUGAS: string;
-  CATATAN?: string;
+  KETERANGAN?: string;
   TANGGAL?: string;
   created_at?: string;
   WAKTU_JAM?: string;
